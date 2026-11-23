@@ -1,0 +1,17 @@
+{
+  "name": "מסך בקרה חירום — הגבורה 3 אשקלון",
+  "short_name": "חירום הגבורה 3",
+  "description": "מסך בקרה לשעת חירום — מרפאת מכבי הגבורה 3, מרחב אשקלון",
+  "start_url": "./emergency-dashboard.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#eef2f7",
+  "theme_color": "#0057a8",
+  "lang": "he",
+  "dir": "rtl",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
