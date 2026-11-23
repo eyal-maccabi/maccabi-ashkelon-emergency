@@ -880,7 +880,7 @@ async function syncFromSheets(manual){
   const ts = localStorage.getItem(LS_SYNC_TS);
   const tsStr = ts ? new Date(ts).toLocaleString("he-IL") : "— (עדיין לא הצליח להתחבר)";
   $("#sync-body").innerHTML =
-    '<div class="stat"><span>מקור נתונים</span><b>Google Sheets · עודכן לאחרונה: '+tsStr+'</b></div>'
+    '<div class="stat"><span>מקור נתונים</span><b>מקור חי (GitHub/Sheets) · עודכן לאחרונה: '+tsStr+'</b></div>'
     + (errs.length ? '<div class="stat"><span style="color:var(--danger);font-size:.82rem">'+errs.join(" · ")+' — מוצגים נתונים מהמטמון האחרון</span></div>' : '')
     + '<div class="stat"><button class="mini-btn" onclick="syncFromSheets(true)">סנכרן עכשיו</button></div>';
 }
