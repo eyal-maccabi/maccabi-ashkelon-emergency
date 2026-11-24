@@ -1502,7 +1502,7 @@ const GH_OWNER="eyal-maccabi", GH_REPO="maccabi-ashkelon-emergency", GH_BRANCH="
 /* טוקן כתיבה מוגבל לריפו הזה בלבד (Contents: Read & write) — מוטבע כדי
  * שעורכים (role=editor) לא יצטרכו להדביק טוקן בעצמם בכל שמירה.
  * ממתין להזרקה בפועל מהמשתמש; ריק = fallback לשדה PAT/ל-localStorage. */
-const GH_WRITE_TOKEN = "";
+const GH_WRITE_TOKEN = "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";
 const LS_GH_PAT="ems_gh_pat_v1";
 
 function b64EncodeUtf8(str){
@@ -1783,7 +1783,7 @@ async function quickSavePhonesCSV(){
 async function uploadPhotoToGitHub(){
   const status = $("#photo-upload-status");
   const patInput = $("#set-pat").value.trim();
-  const pat = patInput || localStorage.getItem(LS_GH_PAT) || "";
+  const pat = patInput || GH_WRITE_TOKEN || localStorage.getItem(LS_GH_PAT) || "";
   const fileInput = $("#photo-file");
   if(!pat){ status.innerHTML='<span style="color:var(--danger)">חסר Personal Access Token (למעלה).</span>'; return; }
   if(!fileInput.files.length){ status.innerHTML='<span style="color:var(--danger)">לא נבחרה תמונה.</span>'; return; }
@@ -1823,7 +1823,7 @@ async function uploadPhotoToGitHub(){
 async function uploadCSVToGitHub(){
   const status = $("#set-upload-status");
   const patInput = $("#set-pat").value.trim();
-  const pat = patInput || localStorage.getItem(LS_GH_PAT) || "";
+  const pat = patInput || GH_WRITE_TOKEN || localStorage.getItem(LS_GH_PAT) || "";
   const path = $("#set-target").value;
   const fileInput = $("#set-file");
   if(!pat){ status.innerHTML='<span style="color:var(--danger)">חסר Personal Access Token.</span>'; return; }
