@@ -67,7 +67,8 @@ main{max-width:1200px; margin:0 auto; background:var(--card); border:1px solid v
 .photo-grp{margin-bottom:18px}
 .photo-grp h4{font-size:.92rem; color:#fff; background:var(--blue); padding:6px 12px; border-radius:6px; margin:0 0 8px}
 .photo-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px}
-.photo-card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden}
+.photo-card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; position:relative}
+.photo-edit-bar{position:absolute; top:6px; left:6px; display:flex; gap:4px; background:rgba(255,255,255,.85); border-radius:6px; padding:2px}
 .photo-card img{width:100%; height:150px; object-fit:cover; display:block; background:#e9edf2}
 .photo-card .cap{padding:8px 10px}
 .photo-card .cap b{font-size:.85rem; display:block}
@@ -143,9 +144,12 @@ footer{max-width:1200px; margin:14px auto 0; padding:0 4px; display:flex; justif
 .edit-row > *{flex:1}
 .edit-row textarea{min-height:46px; resize:vertical}
 .edit-row .edit-row-del{flex:none; width:32px; height:32px; border:1px solid var(--line); background:#fff; border-radius:6px; cursor:pointer; color:var(--danger); font-size:1rem}
+.edit-row-fields{display:flex; flex-direction:column; gap:4px}
+.edit-row-fields label{font-size:.72rem; color:var(--muted); margin-top:2px}
+.edit-rows-list{max-height:48vh; overflow-y:auto; padding-left:2px; margin-bottom:10px}
 .edit-group{border:1px solid var(--line); border-radius:8px; padding:10px; margin-bottom:12px}
 .edit-group-head{display:flex; gap:8px; margin-bottom:8px}
-.edit-add-btn{border:1px dashed var(--line); background:#fff; border-radius:6px; padding:6px 12px; font-size:.82rem; cursor:pointer; color:var(--blue)}
+.edit-add-btn{border:1px dashed var(--line); background:#fff; border-radius:6px; padding:6px 12px; font-size:.82rem; cursor:pointer; color:var(--blue); width:100%}
 .edit-pencil{border:none; background:none; cursor:pointer; font-size:.95rem; margin-right:6px; vertical-align:middle}
 @media print{
   body{background:#fff}
@@ -468,7 +472,7 @@ footer{max-width:1200px; margin:14px auto 0; padding:0 4px; display:flex; justif
       <h3 id="edit-modal-title">עריכה</h3>
       <div id="edit-modal-body"></div>
       <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <button class="mini-btn" onclick="saveEditModal()">שמור ועדכן באתר</button>
+        <button class="mini-btn" onclick="editCtx&&editCtx.kind==='photo' ? savePhotoModal() : saveEditModal()">שמור ועדכן באתר</button>
         <button class="btn-reset" onclick="closeEditModal()">ביטול</button>
         <span id="edit-modal-status" style="font-size:.82rem"></span>
       </div>
@@ -601,6 +605,9 @@ function tryGateLogin(){
     if(typeof renderUnified==="function") renderUnified();
     if(typeof renderEquipment==="function") renderEquipment();
     if(typeof renderScenarios==="function") renderScenarios();
+    if(typeof renderPhones==="function") renderPhones($("#ph-search")?$("#ph-search").value:"");
+    if(typeof renderRoles==="function") renderRoles();
+    if(typeof renderGallery==="function") renderGallery();
   } else {
     err.textContent = "שם משתמש או סיסמה שגויים.";
   }
@@ -987,7 +994,9 @@ function renderDeadlines(){
     +'<div class="stat"><span style="color:var(--muted);font-size:.78rem">הספירות מתחילות מקביעת המצב במסך. הדוח הראשוני נדרש 2 שעות מקבלת הודעת ההפעלה בפועל.</span></div>';
 }
 function renderRoles(){
-  $("#roles-body").innerHTML = ROLES.map(r=>
+  $("#roles-body").innerHTML =
+    (isEditor() ? '<div class="stat"><button class="mini-btn" onclick="editRolesRows()">✏️ ערוך הנהלת מרחב</button></div>' : "")
+    + ROLES.map(r=>
     '<div class="role"><span>'+r[0]+'<div class="who">'+r[1]+'</div></span>'
     +'<a dir="ltr" href="tel:'+r[2].replace(/-/g,"")+'">'+r[2]+'</a></div>').join("");
 }
@@ -1223,27 +1232,135 @@ function renderAllEditableContent(){
 
 function renderGallery(){
   const wrap = $("#gallery-wrap");
+  const addBtn = isEditor() ? '<div class="stat" style="margin-bottom:10px"><button class="mini-btn" onclick="openPhotoAddModal()">+ הוסף תמונה / חפץ</button></div>' : "";
   if(!PHOTOS.length){
-    wrap.innerHTML = '<p style="color:var(--muted)">אין עדיין תמונות. ניתן להעלות דרך מסך ⚙ הגדרות.</p>';
+    wrap.innerHTML = addBtn + '<p style="color:var(--muted)">אין עדיין תמונות.'+(isEditor()?"":" ניתן להעלות דרך מסך ⚙ הגדרות.")+'</p>';
     return;
   }
   const byCat = new Map();
   PHOTOS.forEach(p=>{ const c=p.category||"אחר"; if(!byCat.has(c)) byCat.set(c,[]); byCat.get(c).push(p); });
-  wrap.innerHTML = [...byCat.entries()].map(([cat, items])=>{
+  const sources = [...new Set(PHOTOS.map(p=>p.source_doc).filter(Boolean))];
+  wrap.innerHTML = addBtn + [...byCat.entries()].map(([cat, items])=>{
     const label = PHOTO_CATEGORY_LABELS[cat] || cat;
     return '<div class="photo-grp"><h4>'+label+' ('+items.length+')</h4><div class="photo-grid">'
       + items.map(p=>{
+          const idx = PHOTOS.indexOf(p);
           const src = PHOTOS_BASE_URL + encodeURIComponent(p.filename);
           return '<div class="photo-card">'
             + '<img src="'+src+'" alt="'+(p.title||"")+'">'
+            + (isEditor() ? '<div class="photo-edit-bar">'
+                + '<button class="edit-pencil" title="ערוך פרטים" onclick="openPhotoEditModal('+idx+')">✏️</button>'
+                + '<button class="edit-pencil" title="הסר" onclick="deletePhoto('+idx+')">🗑️</button>'
+                + '</div>' : "")
             + '<div class="cap"><b>'+(p.title||p.filename)+'</b>'
             + (p.location ? '<span>מיקום: '+p.location+(p.floor?(" · קומה "+p.floor):"")+'</span>' : "")
             + (p.notes ? '<span>'+p.notes+'</span>' : "")
-            + (p.source_doc ? '<span>מקור: '+p.source_doc+'</span>' : "")
             + '</div></div>';
         }).join("")
       + '</div></div>';
-  }).join("");
+  }).join("")
+  + (sources.length ? '<div class="stat" style="margin-top:14px"><span style="color:var(--muted);font-size:.78rem">מקורות: '+sources.join(" · ")+'</span></div>' : "");
+}
+async function deletePhoto(idx){
+  const p = PHOTOS[idx];
+  if(!confirm('להסיר את "'+(p.title||p.filename)+'" מהגלריה?')) return;
+  const pat = GH_WRITE_TOKEN || localStorage.getItem(LS_GH_PAT) || "";
+  if(!pat){ alert("חסרה הרשאת כתיבה — פנה למנהל המערכת."); return; }
+  PHOTOS.splice(idx,1);
+  renderGallery();
+  try{ await writeFileToGitHub("data/photos.csv", serializePhotosCSV(), "הסרת תמונה ("+(CURRENT_USER||"editor")+")", pat); }
+  catch(e){ alert("כשל בשמירה לאתר: "+e.message); }
+}
+function serializePhotosCSV(){
+  const lines = ["id,title,category,location,floor,filename,source_doc,notes"];
+  PHOTOS.forEach(p=> lines.push([p.id,p.title,p.category,p.location,p.floor,p.filename,p.source_doc,p.notes].map(csvEscape).join(",")));
+  return lines.join("\n") + "\n";
+}
+function readFileAsBase64(file){
+  return new Promise((resolve,reject)=>{
+    const r = new FileReader();
+    r.onload = ()=> resolve(r.result.split(",")[1]);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+function slugifyFilename(title, ext){
+  const base = (title||"photo").trim().replace(/[^\u0590-\u05FFa-zA-Z0-9]+/g,"-").replace(/^-+|-+$/g,"") || "photo";
+  return base + "-" + Date.now() + "." + ext;
+}
+let photoEditIdx = null; // null = מצב הוספה
+function openPhotoEditModal(idx){
+  photoEditIdx = idx;
+  const p = PHOTOS[idx];
+  $("#edit-modal-title").textContent = "עריכת תמונה";
+  $("#edit-modal-status").textContent = "";
+  $("#edit-modal-body").innerHTML = photoFormHTML(p);
+  $("#edit-modal").hidden = false;
+  editCtx = {kind:"photo"};
+}
+function openPhotoAddModal(){
+  photoEditIdx = null;
+  $("#edit-modal-title").textContent = "הוספת תמונה / חפץ";
+  $("#edit-modal-status").textContent = "";
+  $("#edit-modal-body").innerHTML = photoFormHTML({title:"",category:"אחר",location:"",floor:"",notes:"",source_doc:""});
+  $("#edit-modal").hidden = false;
+  editCtx = {kind:"photo"};
+}
+function photoFormHTML(p){
+  const cats = Object.keys(PHOTO_CATEGORY_LABELS);
+  return '<label style="display:block;margin-bottom:4px;font-size:.82rem">כותרת</label>'
+    + '<input class="search-box edit-field" id="pf-title" style="margin-bottom:10px" value="'+esc(p.title)+'">'
+    + '<label style="display:block;margin-bottom:4px;font-size:.82rem">קטגוריה</label>'
+    + '<select class="search-box edit-field" id="pf-category" style="margin-bottom:10px">'
+      + cats.map(c=>'<option value="'+c+'"'+(c===p.category?" selected":"")+'>'+PHOTO_CATEGORY_LABELS[c]+'</option>').join("")
+    + '</select>'
+    + '<label style="display:block;margin-bottom:4px;font-size:.82rem">מיקום</label>'
+    + '<input class="search-box edit-field" id="pf-location" style="margin-bottom:10px" value="'+esc(p.location)+'">'
+    + '<label style="display:block;margin-bottom:4px;font-size:.82rem">קומה</label>'
+    + '<input class="search-box edit-field" id="pf-floor" style="margin-bottom:10px" value="'+esc(p.floor)+'">'
+    + '<label style="display:block;margin-bottom:4px;font-size:.82rem">הערות</label>'
+    + '<textarea class="search-box edit-field" id="pf-notes" rows="2" style="margin-bottom:10px">'+esc(p.notes)+'</textarea>'
+    + '<label style="display:block;margin-bottom:4px;font-size:.82rem">מקור (קובץ מקור)</label>'
+    + '<input class="search-box edit-field" id="pf-source" style="margin-bottom:10px" value="'+esc(p.source_doc)+'">'
+    + '<label style="display:block;margin-bottom:4px;font-size:.82rem">'+(photoEditIdx===null?"תמונה (חובה)":"החלף תמונה (אופציונלי)")+'</label>'
+    + '<input type="file" accept="image/*" class="search-box" id="pf-file" style="margin-bottom:6px">'
+    + (photoEditIdx!==null ? '<img src="'+PHOTOS_BASE_URL+encodeURIComponent(PHOTOS[photoEditIdx].filename)+'" style="max-width:120px;border-radius:6px;display:block;margin-bottom:10px">' : "");
+}
+async function savePhotoModal(){
+  const status = $("#edit-modal-status");
+  const pat = GH_WRITE_TOKEN || localStorage.getItem(LS_GH_PAT) || "";
+  if(!pat){ status.innerHTML = '<span style="color:var(--danger)">חסרה הרשאת כתיבה — פנה למנהל המערכת.</span>'; return; }
+  const fileInput = $("#pf-file");
+  const file = fileInput.files[0];
+  if(photoEditIdx===null && !file){ status.innerHTML = '<span style="color:var(--danger)">יש לבחור תמונה.</span>'; return; }
+  const fields = {
+    title: $("#pf-title").value.trim(), category: $("#pf-category").value,
+    location: $("#pf-location").value.trim(), floor: $("#pf-floor").value.trim(),
+    notes: $("#pf-notes").value.trim(), source_doc: $("#pf-source").value.trim(),
+  };
+  try{
+    let filename = photoEditIdx!==null ? PHOTOS[photoEditIdx].filename : "";
+    if(file){
+      status.textContent = "מעלה תמונה…";
+      const ext = (file.name.split(".").pop()||"jpg").toLowerCase();
+      filename = slugifyFilename(fields.title, ext);
+      const b64 = await readFileAsBase64(file);
+      await ghPut("data/photos/"+filename, pat, b64, null, "העלאת תמונה ("+(CURRENT_USER||"editor")+")");
+    }
+    if(photoEditIdx!==null){
+      Object.assign(PHOTOS[photoEditIdx], fields, {filename});
+    } else {
+      const id = "p"+(PHOTOS.length ? Math.max(...PHOTOS.map(p=>parseInt((p.id||"p0").replace(/\D/g,""))||0))+1 : 1);
+      PHOTOS.push(Object.assign({id, filename}, fields));
+    }
+    status.textContent = "שומר קטלוג…";
+    await writeFileToGitHub("data/photos.csv", serializePhotosCSV(), "עדכון גלריית תמונות ("+(CURRENT_USER||"editor")+")", pat);
+    renderGallery();
+    status.innerHTML = '<span style="color:var(--ok)">נשמר בהצלחה!</span>';
+    setTimeout(closeEditModal, 1000);
+  } catch(e){
+    status.innerHTML = '<span style="color:var(--danger)">כשל בשמירה: '+e.message+'</span>';
+  }
 }
 async function downloadAllPhotosOffline(){
   const status = $("#gallery-dl-status");
@@ -1382,6 +1499,10 @@ function resetAllCache(){
  * לכתיבה בפועל הוא ה-PAT, מול GitHub עצמו.
  */
 const GH_OWNER="eyal-maccabi", GH_REPO="maccabi-ashkelon-emergency", GH_BRANCH="main";
+/* טוקן כתיבה מוגבל לריפו הזה בלבד (Contents: Read & write) — מוטבע כדי
+ * שעורכים (role=editor) לא יצטרכו להדביק טוקן בעצמם בכל שמירה.
+ * ממתין להזרקה בפועל מהמשתמש; ריק = fallback לשדה PAT/ל-localStorage. */
+const GH_WRITE_TOKEN = "";
 const LS_GH_PAT="ems_gh_pat_v1";
 
 function b64EncodeUtf8(str){
@@ -1424,20 +1545,24 @@ function csvEscape(v){
 }
 
 /* ================= GENERIC CONTENT EDITOR (role=editor) =================
- * פורמט: שורה = רשומה אחת, עמודות מופרדות ב-"‖". זה שומר על מבנה בטוח
- * (לא אפשר לשבור פורמט בטעות כמו עריכת HTML חופשית), אבל פשוט לעריכה.
- * שמירה כותבת את כל data/content.json בפעם אחת (merge של כל הסקשנים
- * הנוכחיים בזיכרון), דרך GitHub Contents API — דורש Personal Access
- * Token אמיתי (כמו בהעלאת CSV/תמונות), לא הסיסמה של מסך הכניסה.
+ * טופס אמיתי עם שדה-לכל-ערך (לא טקסט חופשי עם מפריד) — כל שינוי
+ * מתעדכן ישירות ב-editCtx (state עובד), וההוספה/הסרה של שורות
+ * מרנדרת מחדש מתוך אותו state כך שלא ניתן לאבד נתונים שהוזנו.
+ * שמירה כותבת את כל data/content.json בפעם אחת, דרך GitHub Contents API.
  */
 let editCtx = null;
-const EDIT_SEP = " ‖ ";
 
 function editPencil(onclickExpr){
   return isEditor() ? '<button class="edit-pencil" title="עריכה" onclick="'+onclickExpr+'">✏️</button>' : "";
 }
+function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
 function openEditModal(opts){
   editCtx = opts;
+  if(opts.kind==="rowsN") editCtx.rows = JSON.parse(JSON.stringify(opts.data));
+  else if(opts.kind==="floors") editCtx.rows = opts.data.map(r=>({title:r[0], desc:r[1], names:(r[2]||[]).join("\n")}));
+  else if(opts.kind==="equipmentGroup"){ editCtx.floorTitle = opts.data.floor; editCtx.rows = opts.data.items.slice(); }
+  else if(opts.kind==="scenario"){ editCtx.title = opts.data.title; editCtx.tag = opts.data.tag; editCtx.rows = JSON.parse(JSON.stringify(opts.data.steps||[])); }
   $("#edit-modal-title").textContent = opts.title;
   $("#edit-modal-status").textContent = "";
   renderEditBody();
@@ -1445,71 +1570,119 @@ function openEditModal(opts){
 }
 function closeEditModal(){ $("#edit-modal").hidden = true; editCtx = null; }
 
-function rowsToText(rows){ return rows.map(r=>r.join(EDIT_SEP)).join("\n"); }
-function textToRows(text, cols){
-  return text.split("\n").map(l=>l.trim()).filter(Boolean).map(l=>{
-    const parts = l.split(EDIT_SEP);
-    while(parts.length < cols) parts.push("");
-    return parts.slice(0, cols).map(p=>p.trim());
-  });
+function editRowField(idx, key, val){ editCtx.rows[idx][key] = val; }
+function editStrField(idx, val){ editCtx.rows[idx] = val; }
+function addEditRow(){
+  if(editCtx.kind==="rowsN") editCtx.rows.push(editCtx.colLabels.map(()=>""));
+  else if(editCtx.kind==="floors") editCtx.rows.push({title:"",desc:"",names:""});
+  else if(editCtx.kind==="equipmentGroup") editCtx.rows.push("");
+  else if(editCtx.kind==="scenario") editCtx.rows.push(["",""]);
+  renderEditBody();
+  const list = $("#edit-rows-list");
+  if(list) list.scrollTop = list.scrollHeight;
 }
+function removeEditRow(idx){ editCtx.rows.splice(idx,1); renderEditBody(); }
 
 function renderEditBody(){
   const body = $("#edit-modal-body");
-  const legend = '<div style="font-size:.78rem;color:var(--muted);margin-bottom:8px">כל שורה = רשומה אחת. מפריד בין עמודות: <code dir="ltr">‖</code>. שורה ריקה = נמחקת.</div>';
-  if(editCtx.kind === "rows2"){
-    body.innerHTML = legend
-      + '<div style="font-size:.78rem;margin-bottom:4px">עמודות: '+editCtx.colLabels.join(EDIT_SEP)+'</div>'
-      + '<textarea class="search-box" id="edit-textarea" style="min-height:220px;direction:rtl">'+rowsToText(editCtx.data)+'</textarea>';
+  let html = "";
+
+  if(editCtx.kind === "rowsN"){
+    const types = editCtx.colTypes || editCtx.colLabels.map(()=>"text");
+    html += '<div class="edit-rows-list" id="edit-rows-list">' + editCtx.rows.map((r,i)=>
+      '<div class="edit-row">'
+      + '<div class="edit-row-fields">'
+      + editCtx.colLabels.map((lbl,c)=>
+          '<label>'+esc(lbl)+'</label>'
+          + (types[c]==="textarea"
+            ? '<textarea class="search-box edit-field" rows="2" oninput="editRowField('+i+','+c+',this.value)">'+esc(r[c])+'</textarea>'
+            : '<input class="search-box edit-field" value="'+esc(r[c])+'" oninput="editRowField('+i+','+c+',this.value)">')
+        ).join("")
+      + '</div>'
+      + '<button class="edit-row-del" title="הסר שורה" onclick="removeEditRow('+i+')">✕</button>'
+      + '</div>').join("") + '</div>'
+      + '<button class="edit-add-btn" onclick="addEditRow()">+ הוסף שורה</button>';
   } else if(editCtx.kind === "floors"){
-    body.innerHTML = legend
-      + '<div style="font-size:.78rem;margin-bottom:4px">עמודות: כותרת קומה'+EDIT_SEP+'תיאור מיגון'+EDIT_SEP+'שמות אחראים (מופרדים ב-·)</div>'
-      + '<textarea class="search-box" id="edit-textarea" style="min-height:160px;direction:rtl">'
-      + editCtx.data.map(r=>[r[0],r[1],(r[2]||[]).join(" · ")].join(EDIT_SEP)).join("\n")
-      + '</textarea>';
+    html += '<div class="edit-rows-list" id="edit-rows-list">' + editCtx.rows.map((r,i)=>
+      '<div class="edit-row">'
+      + '<div class="edit-row-fields">'
+      + '<label>כותרת קומה</label>'
+      + '<input class="search-box edit-field" value="'+esc(r.title)+'" oninput="editCtx.rows['+i+'].title=this.value">'
+      + '<label>תיאור מיגון</label>'
+      + '<input class="search-box edit-field" value="'+esc(r.desc)+'" oninput="editCtx.rows['+i+'].desc=this.value">'
+      + '<label>שמות אחראים — שם אחד בכל שורה</label>'
+      + '<textarea class="search-box edit-field" rows="3" oninput="editCtx.rows['+i+'].names=this.value">'+esc(r.names)+'</textarea>'
+      + '</div>'
+      + '<button class="edit-row-del" title="הסר קומה" onclick="removeEditRow('+i+')">✕</button>'
+      + '</div>').join("") + '</div>'
+      + '<button class="edit-add-btn" onclick="addEditRow()">+ הוסף קומה</button>';
   } else if(editCtx.kind === "equipmentGroup"){
-    body.innerHTML = legend
-      + '<label style="display:block;margin-bottom:4px;font-size:.82rem">כותרת הקומה</label>'
-      + '<input class="search-box" id="edit-floor-title" style="margin-bottom:10px" value="'+(editCtx.data.floor||"").replace(/"/g,"&quot;")+'">'
-      + '<label style="display:block;margin-bottom:4px;font-size:.82rem">פריטי ציוד — שורה לכל פריט</label>'
-      + '<textarea class="search-box" id="edit-textarea" style="min-height:180px;direction:rtl">'+(editCtx.data.items||[]).join("\n")+'</textarea>';
+    html += '<label style="display:block;margin-bottom:4px;font-size:.82rem">כותרת הקומה</label>'
+      + '<input class="search-box edit-field" id="edit-floor-title" style="margin-bottom:12px" value="'+esc(editCtx.floorTitle)+'" oninput="editCtx.floorTitle=this.value">'
+      + '<label style="display:block;margin-bottom:4px;font-size:.82rem">פריטי ציוד</label>'
+      + '<div class="edit-rows-list" id="edit-rows-list">' + editCtx.rows.map((v,i)=>
+        '<div class="edit-row">'
+        + '<input class="search-box edit-field" style="flex:1" value="'+esc(v)+'" oninput="editStrField('+i+',this.value)">'
+        + '<button class="edit-row-del" title="הסר פריט" onclick="removeEditRow('+i+')">✕</button>'
+        + '</div>').join("") + '</div>'
+      + '<button class="edit-add-btn" onclick="addEditRow()">+ הוסף פריט</button>';
   } else if(editCtx.kind === "scenario"){
-    body.innerHTML = legend
-      + '<label style="display:block;margin-bottom:4px;font-size:.82rem">כותרת התרחיש</label>'
-      + '<input class="search-box" id="edit-sc-title" style="margin-bottom:8px" value="'+(editCtx.data.title||"").replace(/"/g,"&quot;")+'">'
+    html += '<label style="display:block;margin-bottom:4px;font-size:.82rem">כותרת התרחיש</label>'
+      + '<input class="search-box edit-field" style="margin-bottom:8px" value="'+esc(editCtx.title)+'" oninput="editCtx.title=this.value">'
       + '<label style="display:block;margin-bottom:4px;font-size:.82rem">תג</label>'
-      + '<input class="search-box" id="edit-sc-tag" style="margin-bottom:10px" value="'+(editCtx.data.tag||"").replace(/"/g,"&quot;")+'">'
-      + '<div style="font-size:.78rem;margin-bottom:4px">שלבים — עמודות: כותרת שלב'+EDIT_SEP+'תוכן השלב</div>'
-      + '<textarea class="search-box" id="edit-textarea" style="min-height:220px;direction:rtl">'
-      + rowsToText(editCtx.data.steps||[])
-      + '</textarea>';
+      + '<input class="search-box edit-field" style="margin-bottom:12px" value="'+esc(editCtx.tag)+'" oninput="editCtx.tag=this.value">'
+      + '<label style="display:block;margin-bottom:4px;font-size:.82rem">שלבים</label>'
+      + '<div class="edit-rows-list" id="edit-rows-list">' + editCtx.rows.map((r,i)=>
+        '<div class="edit-row">'
+        + '<div class="edit-row-fields">'
+        + '<label>כותרת שלב</label>'
+        + '<input class="search-box edit-field" value="'+esc(r[0])+'" oninput="editRowField('+i+',0,this.value)">'
+        + '<label>תוכן השלב</label>'
+        + '<textarea class="search-box edit-field" rows="2" oninput="editRowField('+i+',1,this.value)">'+esc(r[1])+'</textarea>'
+        + '</div>'
+        + '<button class="edit-row-del" title="הסר שלב" onclick="removeEditRow('+i+')">✕</button>'
+        + '</div>').join("") + '</div>'
+      + '<button class="edit-add-btn" onclick="addEditRow()">+ הוסף שלב</button>';
   }
-  const saved = localStorage.getItem(LS_GH_PAT);
-  const patDiv = document.createElement("div");
-  patDiv.style.marginTop = "10px";
-  patDiv.innerHTML = '<label style="display:block;margin-bottom:4px;font-size:.82rem">GitHub Personal Access Token'+(saved?" (שמור בדפדפן — אפשר להשאיר ריק)":"")+'</label>'
-    + '<input class="search-box" id="edit-pat" type="password" placeholder="github_pat_...">';
-  body.appendChild(patDiv);
+  body.innerHTML = html;
 }
 
 function readEditModalValue(){
-  if(editCtx.kind === "rows2") return textToRows($("#edit-textarea").value, editCtx.colLabels.length);
+  if(editCtx.kind === "rowsN") return editCtx.rows.filter(r=>r.some(c=>(c||"").trim()));
   if(editCtx.kind === "floors"){
-    return textToRows($("#edit-textarea").value, 3).map(r=>[r[0], r[1], r[2] ? r[2].split("·").map(s=>s.trim()).filter(Boolean) : []]);
+    return editCtx.rows.filter(r=>(r.title||"").trim())
+      .map(r=>[r.title.trim(), (r.desc||"").trim(), (r.names||"").split("\n").map(s=>s.trim()).filter(Boolean)]);
   }
   if(editCtx.kind === "equipmentGroup"){
-    return { floor: $("#edit-floor-title").value.trim(), items: $("#edit-textarea").value.split("\n").map(s=>s.trim()).filter(Boolean) };
+    return { floor: editCtx.floorTitle.trim(), items: editCtx.rows.map(s=>s.trim()).filter(Boolean) };
   }
   if(editCtx.kind === "scenario"){
-    return { title: $("#edit-sc-title").value.trim(), tag: $("#edit-sc-tag").value.trim(), steps: textToRows($("#edit-textarea").value, 2) };
+    return { title: editCtx.title.trim(), tag: editCtx.tag.trim(), steps: editCtx.rows.filter(r=>(r[0]||"").trim()||(r[1]||"").trim()) };
   }
+}
+
+function serializeRolesCSV(){
+  return "role,name,phone\n" + ROLES.map(r=>r.map(csvEscape).join(",")).join("\n") + "\n";
+}
+function serializePhonesCSV(){
+  const lines = ["group,name,phone,notes"];
+  PHONE_GROUPS.forEach(g=>{
+    if(g.dynamic) return; // הקבוצה הדינמית (הנהלת מרחב) נגזרת מ-ROLES, לא נשמרת כאן
+    g.rows.forEach(r=> lines.push([g.name, r[0]||"", r[1]||"", r[2]||""].map(csvEscape).join(",")));
+  });
+  return lines.join("\n") + "\n";
+}
+
+async function writeFileToGitHub(path, content, message, pat){
+  const cur = await ghGet(path, pat);
+  await ghPut(path, pat, b64EncodeUtf8(content), cur?cur.sha:null, message);
 }
 
 async function saveEditModal(){
   const status = $("#edit-modal-status");
-  const patInput = $("#edit-pat").value.trim();
-  const pat = patInput || localStorage.getItem(LS_GH_PAT) || "";
-  if(!pat){ status.innerHTML = '<span style="color:var(--danger)">חסר Personal Access Token.</span>'; return; }
+  const patInput = $("#edit-pat") ? $("#edit-pat").value.trim() : "";
+  const pat = patInput || GH_WRITE_TOKEN || localStorage.getItem(LS_GH_PAT) || "";
+  if(!pat){ status.innerHTML = '<span style="color:var(--danger)">חסר הרשאת כתיבה — פנה למנהל המערכת.</span>'; return; }
   if(patInput) localStorage.setItem(LS_GH_PAT, patInput);
 
   let newVal;
@@ -1518,13 +1691,16 @@ async function saveEditModal(){
 
   editCtx.onSave(newVal); // מעדכן את המשתנה הגלובלי ומרנדר מקומית מיידית
 
-  status.textContent = "שולף גרסה נוכחית…";
+  status.textContent = "שומר…";
   try{
-    const cur = await ghGet("data/content.json", pat);
-    const payload = JSON.stringify(buildContentJSON(), null, 2);
-    status.textContent = "שומר…";
-    await ghPut("data/content.json", pat, b64EncodeUtf8(payload), cur?cur.sha:null,
-      "עריכת תוכן ("+(CURRENT_USER||"editor")+") — "+new Date().toLocaleString("he-IL"));
+    const who = "("+(CURRENT_USER||"editor")+") — "+new Date().toLocaleString("he-IL");
+    if(editCtx.target === "roles"){
+      await writeFileToGitHub("data/roles.csv", serializeRolesCSV(), "עריכת תפקידי הנהלת מרחב "+who, pat);
+    } else if(editCtx.target === "phonesGroup"){
+      await writeFileToGitHub("data/phones.csv", serializePhonesCSV(), "עריכת ספר טלפונים "+who, pat);
+    } else {
+      await writeFileToGitHub("data/content.json", JSON.stringify(buildContentJSON(), null, 2), "עריכת תוכן "+who, pat);
+    }
     status.innerHTML = '<span style="color:var(--ok)">נשמר בהצלחה! האתר יתעדכן בתוך דקה-שתיים.</span>';
     setTimeout(closeEditModal, 1200);
   } catch(e){
@@ -1534,19 +1710,19 @@ async function saveEditModal(){
 
 /* ---- פותחי עריכה ספציפיים לכל סקשן ---- */
 function editOrder(){
-  openEditModal({title:"עריכת סדר פעולות", kind:"rows2", data:ORDER, colLabels:["פעולה","דדליין (אופציונלי)"],
+  openEditModal({title:"עריכת סדר פעולות", kind:"rowsN", data:ORDER, colLabels:["פעולה","דדליין (אופציונלי)"], colTypes:["textarea","text"],
     onSave:(v)=>{ ORDER=v; renderOrder(); }});
 }
 function editChecklist(levelId){
-  openEditModal({title:"עריכת צ׳קליסט "+levelId, kind:"rows2", data:CHECKLISTS[levelId], colLabels:["פעולה","אחריות"],
+  openEditModal({title:"עריכת צ׳קליסט "+levelId, kind:"rowsN", data:CHECKLISTS[levelId], colLabels:["פעולה","אחריות"], colTypes:["textarea","text"],
     onSave:(v)=>{ CHECKLISTS[levelId]=v; renderChecklist(); }});
 }
 function editUnifiedKey(){
-  openEditModal({title:"עריכת מפתח תקינה", kind:"rows2", data:UNIFIED_KEY, colLabels:["תחום","מספר"],
+  openEditModal({title:"עריכת מפתח תקינה", kind:"rowsN", data:UNIFIED_KEY, colLabels:["תחום","מספר"],
     onSave:(v)=>{ UNIFIED_KEY=v; renderUnified(); }});
 }
 function editUnifiedRooms(){
-  openEditModal({title:"עריכת שיבוץ חדרים", kind:"rows2", data:UNIFIED_ROOMS, colLabels:["מיקום","שיבוץ"],
+  openEditModal({title:"עריכת שיבוץ חדרים", kind:"rowsN", data:UNIFIED_ROOMS, colLabels:["מיקום","שיבוץ"],
     onSave:(v)=>{ UNIFIED_ROOMS=v; renderUnified(); }});
 }
 function editFloorsAll(){
@@ -1561,6 +1737,48 @@ function editScenario(idx){
   openEditModal({title:"עריכת תרחיש", kind:"scenario", data:SCENARIOS[idx],
     onSave:(v)=>{ SCENARIOS[idx]=v; renderScenarios(); }});
 }
+
+/* ---- עריכת טלפונים / תפקידים ---- */
+function editRolesRows(){
+  openEditModal({title:"עריכת הנהלת מרחב אשקלון", kind:"rowsN", data:ROLES, colLabels:["תפקיד","שם","טלפון"], target:"roles",
+    onSave:(v)=>{ ROLES=v; renderPhones($("#ph-search").value); renderRoles(); }});
+}
+function editPhoneGroupRows(groupIdx){
+  const g = PHONE_GROUPS[groupIdx];
+  openEditModal({title:"עריכת קבוצה — "+g.name, kind:"rowsN", data:g.rows, colLabels:["שם / תפקיד","טלפון","הערות"], colTypes:["text","text","textarea"], target:"phonesGroup",
+    onSave:(v)=>{ PHONE_GROUPS[groupIdx].rows=v; renderPhones($("#ph-search").value); }});
+}
+function renameGroup(groupIdx){
+  const g = PHONE_GROUPS[groupIdx];
+  const name = prompt("שם חדש לקבוצה:", g.name);
+  if(!name || !name.trim() || name.trim()===g.name) return;
+  g.name = name.trim();
+  renderPhones($("#ph-search").value);
+  quickSavePhonesCSV();
+}
+function deleteGroup(groupIdx){
+  const g = PHONE_GROUPS[groupIdx];
+  if(!confirm('להסיר את הקבוצה "'+g.name+'" וכל הרשומות שבה?')) return;
+  PHONE_GROUPS.splice(groupIdx,1);
+  renderPhones($("#ph-search").value);
+  quickSavePhonesCSV();
+}
+function addGroup(){
+  const name = prompt("שם הקבוצה החדשה:");
+  if(!name || !name.trim()) return;
+  PHONE_GROUPS.push({name:name.trim(), rows:[]});
+  renderPhones($("#ph-search").value);
+  editPhoneGroupRows(PHONE_GROUPS.length-1);
+}
+async function quickSavePhonesCSV(){
+  const pat = GH_WRITE_TOKEN || localStorage.getItem(LS_GH_PAT) || "";
+  if(!pat){ alert("חסרה הרשאת כתיבה — פנה למנהל המערכת."); return; }
+  try{
+    await writeFileToGitHub("data/phones.csv", serializePhonesCSV(),
+      "עריכת קבוצות טלפונים ("+(CURRENT_USER||"editor")+") — "+new Date().toLocaleString("he-IL"), pat);
+  } catch(e){ alert("כשל בשמירה לאתר: "+e.message); }
+}
+
 
 async function uploadPhotoToGitHub(){
   const status = $("#photo-upload-status");
@@ -1657,15 +1875,24 @@ function renderPhones(q){
   const groups = PHONE_GROUPS.map(g => g.dynamic==="roles"
     ? {name:g.name, rows: ROLES.map(r=>[r[0]+" — "+r[1], r[2], ""])}
     : g);
-  $("#phones-wrap").innerHTML = groups.map(g=>{
+  const addBtn = isEditor() ? '<div class="stat" style="margin-bottom:10px"><button class="mini-btn" onclick="addGroup()">+ הוסף קבוצה</button></div>' : "";
+  $("#phones-wrap").innerHTML = addBtn + groups.map((g,i)=>{
     const rows=g.rows.filter(r=> !q || (r[0]+" "+r[1]+" "+r[2]).includes(q));
-    if(!rows.length) return "";
-    return '<div class="grp"><h4>'+g.name+'</h4><table class="ph"><tr><th>שם / תפקיד</th><th>טלפון</th><th>הערות</th></tr>'
+    const dynamic = PHONE_GROUPS[i].dynamic;
+    if(!rows.length && !(isEditor() && !q)) return "";
+    const editBtns = isEditor() ? (
+      '<button class="edit-pencil" title="ערוך רשומות" onclick="'+(dynamic?"editRolesRows()":"editPhoneGroupRows("+i+")")+'">✏️</button>'
+      + (!dynamic ? '<button class="edit-pencil" title="שנה שם קבוצה" onclick="renameGroup('+i+')">🏷️</button>'
+                    + '<button class="edit-pencil" title="הסר קבוצה" onclick="deleteGroup('+i+')">🗑️</button>' : "")
+    ) : "";
+    return '<div class="grp"><h4>'+g.name+editBtns+'</h4>'
+      + (rows.length ? '<table class="ph"><tr><th>שם / תפקיד</th><th>טלפון</th><th>הערות</th></tr>'
       + rows.map(r=>'<tr'+(!r[1]?' class="miss"':'')+'>'
           +'<td>'+r[0]+'</td>'
           +'<td class="tel">'+(r[1]?'<a href="tel:'+r[1].replace(/-/g,"")+'">'+r[1]+'</a>':"חסר — להשלים")+'</td>'
           +'<td>'+(r[2]||"")+'</td></tr>').join("")
-      +'</table></div>';
+      +'</table>' : '<div class="stat"><span style="color:var(--muted)">אין עדיין רשומות בקבוצה הזו.</span></div>')
+      +'</div>';
   }).join("") || '<p style="color:var(--muted)">לא נמצאו התאמות.</p>';
 }
 $("#ph-search").addEventListener("input",e=>renderPhones(e.target.value));
