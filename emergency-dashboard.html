@@ -135,6 +135,18 @@ footer{max-width:1200px; margin:14px auto 0; padding:0 4px; display:flex; justif
 #login-gate{position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; padding:20px; z-index:999}
 #login-gate.hidden{display:none}
 .login-box{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:28px 24px; max-width:360px; width:100%; box-shadow:0 4px 24px rgba(0,0,0,.08)}
+/* ===== Edit modal (editor role) ===== */
+.edit-modal-overlay{position:fixed; inset:0; background:rgba(10,20,30,.45); display:flex; align-items:center; justify-content:center; padding:16px; z-index:1000}
+.edit-modal-overlay[hidden]{display:none}
+.edit-modal-box{background:var(--card); border-radius:var(--radius); padding:20px; max-width:640px; width:100%; max-height:86vh; overflow:auto; box-shadow:0 8px 32px rgba(0,0,0,.25)}
+.edit-row{display:flex; gap:8px; margin-bottom:8px; align-items:flex-start}
+.edit-row > *{flex:1}
+.edit-row textarea{min-height:46px; resize:vertical}
+.edit-row .edit-row-del{flex:none; width:32px; height:32px; border:1px solid var(--line); background:#fff; border-radius:6px; cursor:pointer; color:var(--danger); font-size:1rem}
+.edit-group{border:1px solid var(--line); border-radius:8px; padding:10px; margin-bottom:12px}
+.edit-group-head{display:flex; gap:8px; margin-bottom:8px}
+.edit-add-btn{border:1px dashed var(--line); background:#fff; border-radius:6px; padding:6px 12px; font-size:.82rem; cursor:pointer; color:var(--blue)}
+.edit-pencil{border:none; background:none; cursor:pointer; font-size:.95rem; margin-right:6px; vertical-align:middle}
 @media print{
   body{background:#fff}
   .tabs,.level-strip,.btn-reset,.btn-print,.lv-subtabs,.search-box{display:none !important}
@@ -450,6 +462,19 @@ footer{max-width:1200px; margin:14px auto 0; padding:0 4px; display:flex; justif
     </div>
   </section>
 
+  <!-- ============ EDIT MODAL (generic, for editor role) ============ -->
+  <div id="edit-modal" class="edit-modal-overlay" hidden>
+    <div class="edit-modal-box">
+      <h3 id="edit-modal-title">עריכה</h3>
+      <div id="edit-modal-body"></div>
+      <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="mini-btn" onclick="saveEditModal()">שמור ועדכן באתר</button>
+        <button class="btn-reset" onclick="closeEditModal()">ביטול</button>
+        <span id="edit-modal-status" style="font-size:.82rem"></span>
+      </div>
+    </div>
+  </div>
+
 </main>
 
 <footer>
@@ -519,9 +544,17 @@ function sha256(message) {
 
 const GATE_URL = "https://raw.githubusercontent.com/eyal-maccabi/maccabi-ashkelon-emergency/main/data/access.csv";
 const LS_GATE_UNLOCKED = "ems_gate_unlocked_v1";
+const LS_GATE_ROLE = "ems_gate_role_v1";
+const LS_GATE_USER = "ems_gate_user_v1";
 const LS_GATE_CACHE = "ems_gate_cache_v1";
 // ברירת מחדל אופליין (נדרס ע"י סנכרון חי מ-access.csv כשיש רשת):
-let ACCESS_LIST = [["אשקלון","03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4"]];
+let ACCESS_LIST = [
+  ["אשקלון","03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4","viewer"],
+  ["דניאל","158a323a7ba44870f23d96f1516dd70aa48e9a72db4ebb026b0a89e212a208ab","editor"],
+];
+let CURRENT_ROLE = "viewer";
+let CURRENT_USER = "";
+function isEditor(){ return CURRENT_ROLE === "editor"; }
 
 function gateParseCSV(text){
   // פרסר CSV מקומי מינימלי (אין תלות בפונקציות שמוגדרות מאוחר יותר בקובץ)
@@ -529,7 +562,7 @@ function gateParseCSV(text){
 }
 function applyAccessCSV(text){
   const rows = gateParseCSV(text).filter(r=>!/^username$|שם משתמש/i.test(r[0]));
-  if(rows.length){ ACCESS_LIST = rows.map(r=>[r[0].trim(), r[1].trim()]); }
+  if(rows.length){ ACCESS_LIST = rows.map(r=>[r[0].trim(), r[1].trim(), (r[2]||"viewer").trim()||"viewer"]); }
   return rows.length;
 }
 (function initGate(){
@@ -540,6 +573,8 @@ function applyAccessCSV(text){
     if(t){ applyAccessCSV(t); localStorage.setItem(LS_GATE_CACHE, t); }
   }).catch(()=>{});
   if(localStorage.getItem(LS_GATE_UNLOCKED)==="1"){
+    CURRENT_ROLE = localStorage.getItem(LS_GATE_ROLE) || "viewer";
+    CURRENT_USER = localStorage.getItem(LS_GATE_USER) || "";
     document.getElementById("login-gate").classList.add("hidden");
     document.getElementById("app-shell").hidden = false;
   }
@@ -549,12 +584,23 @@ function tryGateLogin(){
   const p = document.getElementById("gate-pass").value;
   const err = document.getElementById("gate-err");
   const hash = sha256(p);
-  const ok = ACCESS_LIST.some(r => r[0]===u && r[1]===hash);
-  if(ok){
+  const match = ACCESS_LIST.find(r => r[0]===u && r[1]===hash);
+  if(match){
+    CURRENT_ROLE = match[2] || "viewer";
+    CURRENT_USER = match[0];
     localStorage.setItem(LS_GATE_UNLOCKED, "1");
+    localStorage.setItem(LS_GATE_ROLE, CURRENT_ROLE);
+    localStorage.setItem(LS_GATE_USER, CURRENT_USER);
     document.getElementById("login-gate").classList.add("hidden");
     document.getElementById("app-shell").hidden = false;
     err.textContent = "";
+    // רענון תצוגה כדי שכפתורי העריכה (אם editor) יופיעו בלי רילוד
+    if(typeof renderChecklist==="function") renderChecklist();
+    if(typeof renderOrder==="function") renderOrder();
+    if(typeof renderFloors==="function") renderFloors();
+    if(typeof renderUnified==="function") renderUnified();
+    if(typeof renderEquipment==="function") renderEquipment();
+    if(typeof renderScenarios==="function") renderScenarios();
   } else {
     err.textContent = "שם משתמש או סיסמה שגויים.";
   }
@@ -572,7 +618,7 @@ const LEVELS = [
   {id:"D",  name:"כוננות ד׳ — מלחמתית מלאה",    short:"ד׳",  color:"#cc2229", desc:"הפעלת מל״ח בהיקף מלא", active:true},
 ];
 
-const CHECKLISTS = {
+let CHECKLISTS = {
   A: [
     ["עדכון והטמעת נהלי הפעלה לשעת חירום","מנהל המתקן"],
     ["עדכון רשימות טלפונים: מרפאות אחרות, מרפאות אחודות, בתי מרקחת, בתי חולים, רשות מקומית, לשכת בריאות, ספקים, אתרי חירום שונים","מנהל המתקן"],
@@ -641,7 +687,7 @@ const CHECKLISTS = {
   ],
 };
 
-const ORDER = [
+let ORDER = [
   ["קבלת הודעה מחדר המצב המחוזי / מנהל המרחב / מנהל התפעול על האירוע או ההפעלה",""],
   ["הזעקת העובדים באמצעות רשת הקריאה המהירה — יידוע ובקשת הגעה לפי הצורך",""],
   ["ריכוז נתוני כוח אדם הפועל במתקן — לרבות עובדים עצמאיים ורופאים מרותקים למכבי",""],
@@ -665,17 +711,17 @@ let ROLES = [
   ["מנהל ביטחון — מכבי · ממלא מקום ממונה שע״ח מחוזי","אמיר מרגלית","050-8802310"],
 ];
 
-const FLOORS = [
+let FLOORS = [
   ["קומה 0 — בריאות האישה","הכי מוגן שיש + חדר רופא נשים פנימי + מדרגות פנימיות",["ג׳ני","אילנה"]],
   ["קומה 1 — מעבדה, פיזיו, משרדים","ממ״ק (15 מ״ר) + מדרגות פנימיות",["מירב אלזם","שלומית דויט","קראל לוי (פיזיו)","סיגלית זגורי (משרד)","ענבל וייס (מעבדה ועו״ס)","כוכב סבידה (קלינאיות)"]],
   ["קומה 2 — אחיות, רופאים, דימות, טיפולים","ממ״ק (15 מ״ר) + מדרגות פנימיות",["אחמש (אחיות)","רונה חכם גבע (סיעוד וחדרי רופאים)","ליז מלכה (מתחם הרפואה)","אירן אביחסרה (דימות, משוב ומומחים)"]],
   ["קומה 3 — מכונים, מכבי טבעי, מכבי דנט","ממ״ק (15 מ״ר) + מדרגות פנימיות",["אתי קקון (לב וסוכרת)","פנינה שטרית (התפתחות הילד)","רות אופיר / חגית מעוז (דנט)","גלית פנקר / מזכירות (טבעי)","אסתר דרנקובסקי וקס / גלינה גרבר (פארם)"]],
 ];
 
-const UNIFIED_KEY = [
+let UNIFIED_KEY = [
   ["רפואה","4"], ["סיעוד","4"], ["מנהל","4"], ["מעבדה","4"], ["מנהל משמרת","1"],
 ];
-const UNIFIED_ROOMS = [
+let UNIFIED_ROOMS = [
   ["קומת כניסה","סדרן + עמדות טריאז משרד ואחות"],
   ["קומת כניסה","חדר 6 — רופא ילדים · חדר 7 — רופא ילדים"],
   ["קומת כניסה","חדר 5 — מנהל תורן · חדר 13 — מעבדה + סיעוד"],
@@ -686,7 +732,7 @@ const UNIFIED_ROOMS = [
   ["קומה 2","מקלט — אשפוז יום"],
 ];
 
-const EQUIPMENT_FLOORS = [
+let EQUIPMENT_FLOORS = [
   {floor:"קומה 0 — כניסה", items:[
     "מטף כיבוי — צמוד לדלת בריאות האישה",
     "מטף כיבוי — ליד מעלית בכניסה הראשית",
@@ -716,7 +762,7 @@ const EQUIPMENT_FLOORS = [
   ]},
 ];
 
-const SCENARIOS = [
+let SCENARIOS = [
   {title:"אירוע ביולוגי חריג (אבח״ר)", tag:"8 שלבים", steps:[
     ["1 · זיהוי מטופל חשוד","חום ותסמינים נשימתיים חריגים · מספר חולים עם תסמינים דומים · מחלה לא אופיינית לעונה/לאזור · מחלה קשה ובלתי מוסברת · חשיפה אפשרית לאירוע ביולוגי. פעולות מיידיות: תדרוך הסובבים לשמור מרחק, מסכה למטופל ולמלווה, הגבלת מגע עם מטופלים אחרים"],
     ["2 · הפעלת נוהל מיידית","שתי אחיות ייעודיות + רופא משפחה שיוגדר לחירום, עם ערכת אב״ר מהארון בחדר צוות קומה 2. נקודת מפגש — קומה 0, מכבי דנט. צוות המינהל/מזכירות (״סדרנית״) מפנה את אזור ההמתנה, מרחיק מטופלים/עובדים שאינם חיוניים ושומר נתיב גישה פנוי לצוות החירום. התמגנות מלאה לפני מגע: מגן פנים, מסכת N95, חלוק מגן, כפפות כפולות, ערדליים — אין לגשת למטופל בלעדיה"],
@@ -947,7 +993,8 @@ function renderRoles(){
 }
 function renderFloors(){
   $("#floors-body").innerHTML =
-    FLOORS.map(f=>'<div class="stat"><span><b>'+f[0]+'</b><br><small>'+f[1]+'</small><br><small class="who" style="color:var(--muted)">אחראים: '
+    (isEditor() ? '<div class="stat"><button class="mini-btn" onclick="editFloorsAll()">✏️ ערוך קומות ואחראים</button></div>' : "")
+    + FLOORS.map(f=>'<div class="stat"><span><b>'+f[0]+'</b><br><small>'+f[1]+'</small><br><small class="who" style="color:var(--muted)">אחראים: '
       +f[2].map(n=>'<a href="javascript:void(0)" onclick="jumpToContact('+JSON.stringify(n)+')" style="color:var(--blue);text-decoration:underline;cursor:pointer">'+n+'</a>').join(' · ')
       +'</small></span></div>').join("")
     +'<div class="stat"><span><b>תפקיד אחראי קומה בפינוי</b></span><b>כיוון הצוותים · וידוא שהקומה התרוקנה · דלתות סגורות ולא נעולות (לפי נוהל המילוט — שקופית 9 מנוסחת ״נעילה״, להכרעה) · כריזה חוזרת במגפון</b></div>'
@@ -956,8 +1003,10 @@ function renderFloors(){
     +'<div class="stat"><span><b>מגפונים</b></span><b>קומה 1 משרד · קומה 2 מזכירות ואחיות · קומה 3 מזכירות מכון הלב</b></div>';
 }
 function renderOrder(){
-  $("#order-body").innerHTML = ORDER.map((o,i)=>
-    '<div class="stat"><span>'+(i+1)+". "+o[0]+(o[1]?' <b style="color:var(--danger)">['+o[1]+']</b>':"")+'</span></div>').join("");
+  $("#order-body").innerHTML =
+    (isEditor() ? '<div class="stat"><button class="mini-btn" onclick="editOrder()">✏️ ערוך סדר פעולות</button></div>' : "")
+    + ORDER.map((o,i)=>
+      '<div class="stat"><span>'+(i+1)+". "+o[0]+(o[1]?' <b style="color:var(--danger)">['+o[1]+']</b>':"")+'</span></div>').join("");
 }
 
 /* ================= CHECKLIST ================= */
@@ -976,6 +1025,13 @@ function renderSubtabs(){
 function renderChecklist(){
   const id=state.curCL, items=CHECKLISTS[id], checks=getChecks(id);
   const wrap=$("#checklist"); wrap.innerHTML="";
+  if(isEditor()){
+    const editBtn=document.createElement("button");
+    editBtn.className="mini-btn"; editBtn.style.marginBottom="10px";
+    editBtn.textContent="✏️ ערוך צ׳קליסט "+id;
+    editBtn.onclick=()=>editChecklist(id);
+    wrap.appendChild(editBtn);
+  }
   items.forEach((it,idx)=>{
     const key=String(idx);
     const lab=document.createElement("label");
@@ -1005,24 +1061,28 @@ $("#btn-reset").onclick=()=>{
 
 /* ================= UNIFIED CLINIC ================= */
 function renderUnified(){
-  $("#unified-key").innerHTML = UNIFIED_KEY.map(k=>'<div class="stat"><span>'+k[0]+'</span><b>'+k[1]+'</b></div>').join("")
+  $("#unified-key").innerHTML =
+    (isEditor() ? '<div class="stat"><button class="mini-btn" onclick="editUnifiedKey()">✏️ ערוך מפתח תקינה</button></div>' : "")
+    + UNIFIED_KEY.map(k=>'<div class="stat"><span>'+k[0]+'</span><b>'+k[1]+'</b></div>').join("")
     + '<div class="stat"><span style="color:var(--muted);font-size:.82rem">מפתח תקינה — 12 שעות ביממה, משמרות של 6 שעות (למעט מעבדה, פתיחה 7:00). נדרש גם צוות נוסף לביקורי בית מתחומי הרפואה והסיעוד</span></div>';
-  $("#unified-rooms").innerHTML = '<table class="ph"><tr><th>מיקום</th><th>שיבוץ</th></tr>'
+  $("#unified-rooms").innerHTML =
+    (isEditor() ? '<div class="stat"><button class="mini-btn" onclick="editUnifiedRooms()">✏️ ערוך שיבוץ חדרים</button></div>' : "")
+    + '<table class="ph"><tr><th>מיקום</th><th>שיבוץ</th></tr>'
     + UNIFIED_ROOMS.map(r=>'<tr><td>'+r[0]+'</td><td>'+r[1]+'</td></tr>').join("") + '</table>';
 }
 
 /* ================= EQUIPMENT ================= */
 function renderEquipment(){
-  $("#equipment-floors").innerHTML = EQUIPMENT_FLOORS.map(f=>
-    '<div class="card"><h3>'+f.floor+'</h3><div class="body">'
+  $("#equipment-floors").innerHTML = EQUIPMENT_FLOORS.map((f,idx)=>
+    '<div class="card"><h3>'+f.floor+editPencil('editEquipmentGroup('+idx+')')+'</h3><div class="body">'
     + f.items.map(it=>'<div class="stat"><span>'+it+'</span></div>').join("")
     + '</div></div>').join("");
 }
 
 /* ================= SCENARIOS ================= */
 function renderScenarios(){
-  $("#scenarios-wrap").innerHTML = SCENARIOS.map(s=>
-    '<div class="card"><h3>'+s.title+' <span class="tag">'+s.tag+'</span></h3><div class="body">'
+  $("#scenarios-wrap").innerHTML = SCENARIOS.map((s,idx)=>
+    '<div class="card"><h3>'+s.title+' <span class="tag">'+s.tag+'</span>'+editPencil('editScenario('+idx+')')+'</h3><div class="body">'
     + s.steps.map(st=>'<div class="stat"><span><b>'+st[0]+'</b><br><small style="color:var(--muted)">'+st[1]+'</small></span></div>').join("")
     + '</div></div>').join("");
 }
@@ -1060,7 +1120,9 @@ const SYNC_URLS = {
   roles: "https://raw.githubusercontent.com/eyal-maccabi/maccabi-ashkelon-emergency/main/data/roles.csv",
   phonebook: "https://raw.githubusercontent.com/eyal-maccabi/maccabi-ashkelon-emergency/main/data/phones.csv",
   photos: "https://raw.githubusercontent.com/eyal-maccabi/maccabi-ashkelon-emergency/main/data/photos.csv",
+  content: "https://raw.githubusercontent.com/eyal-maccabi/maccabi-ashkelon-emergency/main/data/content.json",
 };
+const LS_SYNC_CONTENT = "ems_sync_content_v1";
 const PHOTOS_BASE_URL = "https://raw.githubusercontent.com/eyal-maccabi/maccabi-ashkelon-emergency/main/data/photos/";
 let PHOTOS = [];
 const LS_SYNC_PHOTOS = "ems_sync_photos_v1";
@@ -1134,6 +1196,31 @@ const PHOTO_CATEGORY_LABELS = {
   "מטף":"מטפים", "ארון_ציוד":"ארונות ציוד", "לוח_חשמל":"לוחות חשמל",
   "מערכת_מים":"מערכות מים", "שילוט":"שילוט", "חדר":"חדרים ומרחבים", "אחר":"אחר",
 };
+
+/* ================= EDITABLE CONTENT (checklists/order/floors/equipment/scenarios) ================= */
+function buildContentJSON(){
+  return { checklists:CHECKLISTS, order:ORDER, floors:FLOORS, unifiedKey:UNIFIED_KEY, unifiedRooms:UNIFIED_ROOMS, equipmentFloors:EQUIPMENT_FLOORS, scenarios:SCENARIOS };
+}
+function applyContentJSON(obj){
+  if(!obj || typeof obj!=="object") return false;
+  if(obj.checklists) CHECKLISTS = obj.checklists;
+  if(obj.order) ORDER = obj.order;
+  if(obj.floors) FLOORS = obj.floors;
+  if(obj.unifiedKey) UNIFIED_KEY = obj.unifiedKey;
+  if(obj.unifiedRooms) UNIFIED_ROOMS = obj.unifiedRooms;
+  if(obj.equipmentFloors) EQUIPMENT_FLOORS = obj.equipmentFloors;
+  if(obj.scenarios) SCENARIOS = obj.scenarios;
+  return true;
+}
+function renderAllEditableContent(){
+  if(typeof renderChecklist==="function") renderChecklist();
+  if(typeof renderOrder==="function") renderOrder();
+  if(typeof renderFloors==="function") renderFloors();
+  if(typeof renderUnified==="function") renderUnified();
+  if(typeof renderEquipment==="function") renderEquipment();
+  if(typeof renderScenarios==="function") renderScenarios();
+}
+
 function renderGallery(){
   const wrap = $("#gallery-wrap");
   if(!PHOTOS.length){
@@ -1194,8 +1281,16 @@ async function syncFromSheets(manual){
     try{ const t=await fetchCSV(SYNC_URLS.photos); localStorage.setItem(LS_SYNC_PHOTOS,t); if(applyPhotosCSV(t)) okAny=true; }
     catch(e){ errs.push("תמונות: "+e.message); const cached=localStorage.getItem(LS_SYNC_PHOTOS); if(cached) applyPhotosCSV(cached); }
   }
+  if(SYNC_URLS.content){
+    try{
+      const t=await fetchCSV(SYNC_URLS.content);
+      localStorage.setItem(LS_SYNC_CONTENT,t);
+      if(applyContentJSON(JSON.parse(t))) okAny=true;
+    }
+    catch(e){ errs.push("תוכן: "+e.message); const cached=localStorage.getItem(LS_SYNC_CONTENT); if(cached){ try{ applyContentJSON(JSON.parse(cached)); }catch(_e){} } }
+  }
   if(okAny){ localStorage.setItem(LS_SYNC_TS, new Date().toISOString()); }
-  renderRoles(); renderPhones($("#ph-search")?$("#ph-search").value:""); renderGallery();
+  renderRoles(); renderPhones($("#ph-search")?$("#ph-search").value:""); renderGallery(); renderAllEditableContent();
   const ts = localStorage.getItem(LS_SYNC_TS);
   const tsStr = ts ? new Date(ts).toLocaleString("he-IL") : "— (עדיין לא הצליח להתחבר)";
   $("#sync-body").innerHTML =
@@ -1208,6 +1303,7 @@ function loadSyncCacheOffline(){
   const r=localStorage.getItem(LS_SYNC_ROLES); if(r) applyRolesCSV(r);
   const p=localStorage.getItem(LS_SYNC_PHONES); if(p) applyPhonebookCSV(p);
   const ph=localStorage.getItem(LS_SYNC_PHOTOS); if(ph) applyPhotosCSV(ph);
+  const c=localStorage.getItem(LS_SYNC_CONTENT); if(c){ try{ applyContentJSON(JSON.parse(c)); }catch(_e){} }
 }
 
 /* ================= SETTINGS (basic gate, NOT real security) =================
@@ -1326,6 +1422,146 @@ function csvEscape(v){
   v = String(v==null?"":v);
   return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v;
 }
+
+/* ================= GENERIC CONTENT EDITOR (role=editor) =================
+ * פורמט: שורה = רשומה אחת, עמודות מופרדות ב-"‖". זה שומר על מבנה בטוח
+ * (לא אפשר לשבור פורמט בטעות כמו עריכת HTML חופשית), אבל פשוט לעריכה.
+ * שמירה כותבת את כל data/content.json בפעם אחת (merge של כל הסקשנים
+ * הנוכחיים בזיכרון), דרך GitHub Contents API — דורש Personal Access
+ * Token אמיתי (כמו בהעלאת CSV/תמונות), לא הסיסמה של מסך הכניסה.
+ */
+let editCtx = null;
+const EDIT_SEP = " ‖ ";
+
+function editPencil(onclickExpr){
+  return isEditor() ? '<button class="edit-pencil" title="עריכה" onclick="'+onclickExpr+'">✏️</button>' : "";
+}
+function openEditModal(opts){
+  editCtx = opts;
+  $("#edit-modal-title").textContent = opts.title;
+  $("#edit-modal-status").textContent = "";
+  renderEditBody();
+  $("#edit-modal").hidden = false;
+}
+function closeEditModal(){ $("#edit-modal").hidden = true; editCtx = null; }
+
+function rowsToText(rows){ return rows.map(r=>r.join(EDIT_SEP)).join("\n"); }
+function textToRows(text, cols){
+  return text.split("\n").map(l=>l.trim()).filter(Boolean).map(l=>{
+    const parts = l.split(EDIT_SEP);
+    while(parts.length < cols) parts.push("");
+    return parts.slice(0, cols).map(p=>p.trim());
+  });
+}
+
+function renderEditBody(){
+  const body = $("#edit-modal-body");
+  const legend = '<div style="font-size:.78rem;color:var(--muted);margin-bottom:8px">כל שורה = רשומה אחת. מפריד בין עמודות: <code dir="ltr">‖</code>. שורה ריקה = נמחקת.</div>';
+  if(editCtx.kind === "rows2"){
+    body.innerHTML = legend
+      + '<div style="font-size:.78rem;margin-bottom:4px">עמודות: '+editCtx.colLabels.join(EDIT_SEP)+'</div>'
+      + '<textarea class="search-box" id="edit-textarea" style="min-height:220px;direction:rtl">'+rowsToText(editCtx.data)+'</textarea>';
+  } else if(editCtx.kind === "floors"){
+    body.innerHTML = legend
+      + '<div style="font-size:.78rem;margin-bottom:4px">עמודות: כותרת קומה'+EDIT_SEP+'תיאור מיגון'+EDIT_SEP+'שמות אחראים (מופרדים ב-·)</div>'
+      + '<textarea class="search-box" id="edit-textarea" style="min-height:160px;direction:rtl">'
+      + editCtx.data.map(r=>[r[0],r[1],(r[2]||[]).join(" · ")].join(EDIT_SEP)).join("\n")
+      + '</textarea>';
+  } else if(editCtx.kind === "equipmentGroup"){
+    body.innerHTML = legend
+      + '<label style="display:block;margin-bottom:4px;font-size:.82rem">כותרת הקומה</label>'
+      + '<input class="search-box" id="edit-floor-title" style="margin-bottom:10px" value="'+(editCtx.data.floor||"").replace(/"/g,"&quot;")+'">'
+      + '<label style="display:block;margin-bottom:4px;font-size:.82rem">פריטי ציוד — שורה לכל פריט</label>'
+      + '<textarea class="search-box" id="edit-textarea" style="min-height:180px;direction:rtl">'+(editCtx.data.items||[]).join("\n")+'</textarea>';
+  } else if(editCtx.kind === "scenario"){
+    body.innerHTML = legend
+      + '<label style="display:block;margin-bottom:4px;font-size:.82rem">כותרת התרחיש</label>'
+      + '<input class="search-box" id="edit-sc-title" style="margin-bottom:8px" value="'+(editCtx.data.title||"").replace(/"/g,"&quot;")+'">'
+      + '<label style="display:block;margin-bottom:4px;font-size:.82rem">תג</label>'
+      + '<input class="search-box" id="edit-sc-tag" style="margin-bottom:10px" value="'+(editCtx.data.tag||"").replace(/"/g,"&quot;")+'">'
+      + '<div style="font-size:.78rem;margin-bottom:4px">שלבים — עמודות: כותרת שלב'+EDIT_SEP+'תוכן השלב</div>'
+      + '<textarea class="search-box" id="edit-textarea" style="min-height:220px;direction:rtl">'
+      + rowsToText(editCtx.data.steps||[])
+      + '</textarea>';
+  }
+  const saved = localStorage.getItem(LS_GH_PAT);
+  const patDiv = document.createElement("div");
+  patDiv.style.marginTop = "10px";
+  patDiv.innerHTML = '<label style="display:block;margin-bottom:4px;font-size:.82rem">GitHub Personal Access Token'+(saved?" (שמור בדפדפן — אפשר להשאיר ריק)":"")+'</label>'
+    + '<input class="search-box" id="edit-pat" type="password" placeholder="github_pat_...">';
+  body.appendChild(patDiv);
+}
+
+function readEditModalValue(){
+  if(editCtx.kind === "rows2") return textToRows($("#edit-textarea").value, editCtx.colLabels.length);
+  if(editCtx.kind === "floors"){
+    return textToRows($("#edit-textarea").value, 3).map(r=>[r[0], r[1], r[2] ? r[2].split("·").map(s=>s.trim()).filter(Boolean) : []]);
+  }
+  if(editCtx.kind === "equipmentGroup"){
+    return { floor: $("#edit-floor-title").value.trim(), items: $("#edit-textarea").value.split("\n").map(s=>s.trim()).filter(Boolean) };
+  }
+  if(editCtx.kind === "scenario"){
+    return { title: $("#edit-sc-title").value.trim(), tag: $("#edit-sc-tag").value.trim(), steps: textToRows($("#edit-textarea").value, 2) };
+  }
+}
+
+async function saveEditModal(){
+  const status = $("#edit-modal-status");
+  const patInput = $("#edit-pat").value.trim();
+  const pat = patInput || localStorage.getItem(LS_GH_PAT) || "";
+  if(!pat){ status.innerHTML = '<span style="color:var(--danger)">חסר Personal Access Token.</span>'; return; }
+  if(patInput) localStorage.setItem(LS_GH_PAT, patInput);
+
+  let newVal;
+  try{ newVal = readEditModalValue(); }
+  catch(e){ status.innerHTML = '<span style="color:var(--danger)">שגיאה בקריאת הטופס: '+e.message+'</span>'; return; }
+
+  editCtx.onSave(newVal); // מעדכן את המשתנה הגלובלי ומרנדר מקומית מיידית
+
+  status.textContent = "שולף גרסה נוכחית…";
+  try{
+    const cur = await ghGet("data/content.json", pat);
+    const payload = JSON.stringify(buildContentJSON(), null, 2);
+    status.textContent = "שומר…";
+    await ghPut("data/content.json", pat, b64EncodeUtf8(payload), cur?cur.sha:null,
+      "עריכת תוכן ("+(CURRENT_USER||"editor")+") — "+new Date().toLocaleString("he-IL"));
+    status.innerHTML = '<span style="color:var(--ok)">נשמר בהצלחה! האתר יתעדכן בתוך דקה-שתיים.</span>';
+    setTimeout(closeEditModal, 1200);
+  } catch(e){
+    status.innerHTML = '<span style="color:var(--danger)">כשל בשמירה לאתר (השינוי נשאר מוצג מקומית בלבד): '+e.message+'</span>';
+  }
+}
+
+/* ---- פותחי עריכה ספציפיים לכל סקשן ---- */
+function editOrder(){
+  openEditModal({title:"עריכת סדר פעולות", kind:"rows2", data:ORDER, colLabels:["פעולה","דדליין (אופציונלי)"],
+    onSave:(v)=>{ ORDER=v; renderOrder(); }});
+}
+function editChecklist(levelId){
+  openEditModal({title:"עריכת צ׳קליסט "+levelId, kind:"rows2", data:CHECKLISTS[levelId], colLabels:["פעולה","אחריות"],
+    onSave:(v)=>{ CHECKLISTS[levelId]=v; renderChecklist(); }});
+}
+function editUnifiedKey(){
+  openEditModal({title:"עריכת מפתח תקינה", kind:"rows2", data:UNIFIED_KEY, colLabels:["תחום","מספר"],
+    onSave:(v)=>{ UNIFIED_KEY=v; renderUnified(); }});
+}
+function editUnifiedRooms(){
+  openEditModal({title:"עריכת שיבוץ חדרים", kind:"rows2", data:UNIFIED_ROOMS, colLabels:["מיקום","שיבוץ"],
+    onSave:(v)=>{ UNIFIED_ROOMS=v; renderUnified(); }});
+}
+function editFloorsAll(){
+  openEditModal({title:"עריכת קומות ואחראים", kind:"floors", data:FLOORS,
+    onSave:(v)=>{ FLOORS=v; renderFloors(); }});
+}
+function editEquipmentGroup(idx){
+  openEditModal({title:"עריכת ציוד — "+EQUIPMENT_FLOORS[idx].floor, kind:"equipmentGroup", data:EQUIPMENT_FLOORS[idx],
+    onSave:(v)=>{ EQUIPMENT_FLOORS[idx]=v; renderEquipment(); }});
+}
+function editScenario(idx){
+  openEditModal({title:"עריכת תרחיש", kind:"scenario", data:SCENARIOS[idx],
+    onSave:(v)=>{ SCENARIOS[idx]=v; renderScenarios(); }});
+}
+
 async function uploadPhotoToGitHub(){
   const status = $("#photo-upload-status");
   const patInput = $("#set-pat").value.trim();
