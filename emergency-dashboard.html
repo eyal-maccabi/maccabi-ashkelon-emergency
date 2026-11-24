@@ -64,6 +64,14 @@ main{max-width:1200px; margin:0 auto; background:var(--card); border:1px solid v
 .grid.c2{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
 .card{border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; background:#fbfcfe}
 .card h3{font-size:.98rem; padding:9px 14px; background:#f0f4f9; border-bottom:1px solid var(--line); color:var(--blue-dk)}
+.photo-grp{margin-bottom:18px}
+.photo-grp h4{font-size:.92rem; color:#fff; background:var(--blue); padding:6px 12px; border-radius:6px; margin:0 0 8px}
+.photo-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px}
+.photo-card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden}
+.photo-card img{width:100%; height:150px; object-fit:cover; display:block; background:#e9edf2}
+.photo-card .cap{padding:8px 10px}
+.photo-card .cap b{font-size:.85rem; display:block}
+.photo-card .cap span{font-size:.74rem; color:var(--muted); display:block; margin-top:3px}
 .card .body{padding:12px 14px}
 .card h3 .tag{float:left; font-size:.72rem; font-weight:500; color:var(--muted); margin-top:2px}
 /* ===== Level selector ===== */
@@ -168,6 +176,7 @@ footer{max-width:1200px; margin:14px auto 0; padding:0 4px; display:flex; justif
   <button class="tab-btn" data-tab="readiness">כוננות וצ׳קליסטים</button>
   <button class="tab-btn" data-tab="unified">מרפאה אחודה</button>
   <button class="tab-btn" data-tab="equipment">ציוד ותשתיות</button>
+  <button class="tab-btn" data-tab="gallery">תיעוד מקומות וחפצים</button>
   <button class="tab-btn" data-tab="scenarios">תרחישים ייעודיים</button>
   <button class="tab-btn" data-tab="phones">טלפונים חיוניים</button>
 </nav>
@@ -311,6 +320,20 @@ footer{max-width:1200px; margin:14px auto 0; padding:0 4px; display:flex; justif
     <div class="src-note">מקור: רשימת ציוד חירום קומה 1 חדר צוות, מיפוי ציוד חירום בגבורה (מצגת), מיפוי מטפים בסניף גבורה, תעודת זהות מרחב אשקלון 2026. ודא מיקום בשטח מול דניאל גביו — שקופיות המצגת מראות שינויים קלים בין גרסאות.</div>
   </section>
 
+  <!-- ============ TAB: PHOTO GALLERY ============ -->
+  <section class="panel" id="tab-gallery" hidden>
+    <div class="card" style="margin-bottom:14px">
+      <h3>תמונות של מקומות וחפצים חיוניים <span class="tag">מטפים · ארונות ציוד · לוחות חשמל · מערכות · שילוט</span></h3>
+      <div class="body">
+        <div class="stat"><span>שימוש אופליין</span><b>פעם אחת כשיש רשת — לחץ "הורד הכל לשימוש אופליין", ואז התמונות יישארו זמינות גם בלי אינטרנט (כולל בנייד)</b></div>
+        <div class="stat"><button class="mini-btn" onclick="downloadAllPhotosOffline()">הורד הכל לשימוש אופליין</button></div>
+        <div id="gallery-dl-status" style="font-size:.82rem"></div>
+      </div>
+    </div>
+    <div id="gallery-wrap"></div>
+    <div class="src-note">כל תמונה מתועדת עם המסמך-מקור שלה. תמונות נוספות מועלות ע"י מנהל המערכת דרך מסך ⚙ הגדרות.</div>
+  </section>
+
   <!-- ============ TAB: SCENARIOS ============ -->
   <section class="panel" id="tab-scenarios" hidden>
     <div class="grid" id="scenarios-wrap"></div>
@@ -364,6 +387,36 @@ footer{max-width:1200px; margin:14px auto 0; padding:0 4px; display:flex; justif
           <input type="file" id="set-file" accept=".csv,text/csv" style="margin-bottom:10px;display:block">
           <button class="mini-btn" onclick="uploadCSVToGitHub()">העלה ועדכן באתר</button>
           <div id="set-upload-status" style="font-size:.82rem;margin-top:8px"></div>
+        </div>
+        <hr style="border:none;border-top:1px solid var(--line);margin:14px 0">
+        <div class="stat" style="display:block">
+          <b>העלאת תמונה — מקום/חפץ חיוני</b>
+          <div style="font-size:.78rem;color:var(--muted);margin:6px 0 10px">
+            מטף, ארון ציוד, לוח חשמל, מערכת מים, שילוט וכו'. אפשר לצלם עם
+            מצלמת הנייד ולהעלות ישירות. משתמש ב-token מלמעלה.
+          </div>
+          <label style="display:block;margin-bottom:4px">כותרת קצרה</label>
+          <input class="search-box" id="photo-title" style="margin-bottom:10px" placeholder='לדוגמה: מטף אבקה — מסדרון קומה 1'>
+          <label style="display:block;margin-bottom:4px">קטגוריה</label>
+          <select class="search-box" id="photo-category" style="margin-bottom:10px">
+            <option value="מטף">מטף</option>
+            <option value="ארון_ציוד">ארון ציוד</option>
+            <option value="לוח_חשמל">לוח חשמל</option>
+            <option value="מערכת_מים">מערכת מים</option>
+            <option value="שילוט">שילוט</option>
+            <option value="חדר">חדר / מרחב</option>
+            <option value="אחר">אחר</option>
+          </select>
+          <label style="display:block;margin-bottom:4px">מיקום (טקסט חופשי)</label>
+          <input class="search-box" id="photo-location" style="margin-bottom:10px" placeholder="לדוגמה: מסדרון קומה 1, ליד המעלית">
+          <label style="display:block;margin-bottom:4px">קומה (אופציונלי)</label>
+          <input class="search-box" id="photo-floor" style="margin-bottom:10px" placeholder="לדוגמה: 1">
+          <label style="display:block;margin-bottom:4px">הערות (אופציונלי)</label>
+          <input class="search-box" id="photo-notes" style="margin-bottom:10px">
+          <label style="display:block;margin-bottom:4px">תמונה</label>
+          <input type="file" id="photo-file" accept="image/*" capture="environment" style="margin-bottom:10px;display:block">
+          <button class="mini-btn" onclick="uploadPhotoToGitHub()">העלה תמונה</button>
+          <div id="photo-upload-status" style="font-size:.82rem;margin-top:8px"></div>
         </div>
         <div class="stat"><button class="mini-btn" onclick="closeSettings()">חזרה למסך הבקרה</button></div>
       </div>
@@ -875,7 +928,11 @@ async function pollOref(){
 const SYNC_URLS = {
   roles: "https://raw.githubusercontent.com/eyal-maccabi/maccabi-ashkelon-emergency/main/data/roles.csv",
   phonebook: "https://raw.githubusercontent.com/eyal-maccabi/maccabi-ashkelon-emergency/main/data/phones.csv",
+  photos: "https://raw.githubusercontent.com/eyal-maccabi/maccabi-ashkelon-emergency/main/data/photos.csv",
 };
+const PHOTOS_BASE_URL = "https://raw.githubusercontent.com/eyal-maccabi/maccabi-ashkelon-emergency/main/data/photos/";
+let PHOTOS = [];
+const LS_SYNC_PHOTOS = "ems_sync_photos_v1";
 const LS_SYNC_ROLES = "ems_sync_roles_v1", LS_SYNC_PHONES = "ems_sync_phones_v1", LS_SYNC_TS = "ems_sync_ts_v1";
 const SYNC_TIMEOUT_MS = 8000;
 
@@ -932,8 +989,62 @@ function applyPhonebookCSV(text){
   return groups.length;
 }
 
+function applyPhotosCSV(text){
+  const rows = parseCSV(text);
+  const body = rows[0] && /^id$|מזהה/i.test(rows[0][0]) ? rows.slice(1) : rows;
+  const parsed = body.map(r=>({
+    id:r[0]||"", title:r[1]||"", category:r[2]||"אחר", location:r[3]||"",
+    floor:r[4]||"", filename:r[5]||"", source_doc:r[6]||"", notes:r[7]||"",
+  })).filter(r=>r.filename);
+  if(parsed.length){ PHOTOS = parsed; }
+  return parsed.length;
+}
+const PHOTO_CATEGORY_LABELS = {
+  "מטף":"מטפים", "ארון_ציוד":"ארונות ציוד", "לוח_חשמל":"לוחות חשמל",
+  "מערכת_מים":"מערכות מים", "שילוט":"שילוט", "חדר":"חדרים ומרחבים", "אחר":"אחר",
+};
+function renderGallery(){
+  const wrap = $("#gallery-wrap");
+  if(!PHOTOS.length){
+    wrap.innerHTML = '<p style="color:var(--muted)">אין עדיין תמונות. ניתן להעלות דרך מסך ⚙ הגדרות.</p>';
+    return;
+  }
+  const byCat = new Map();
+  PHOTOS.forEach(p=>{ const c=p.category||"אחר"; if(!byCat.has(c)) byCat.set(c,[]); byCat.get(c).push(p); });
+  wrap.innerHTML = [...byCat.entries()].map(([cat, items])=>{
+    const label = PHOTO_CATEGORY_LABELS[cat] || cat;
+    return '<div class="photo-grp"><h4>'+label+' ('+items.length+')</h4><div class="photo-grid">'
+      + items.map(p=>{
+          const src = PHOTOS_BASE_URL + encodeURIComponent(p.filename);
+          return '<div class="photo-card">'
+            + '<img src="'+src+'" alt="'+(p.title||"")+'">'
+            + '<div class="cap"><b>'+(p.title||p.filename)+'</b>'
+            + (p.location ? '<span>מיקום: '+p.location+(p.floor?(" · קומה "+p.floor):"")+'</span>' : "")
+            + (p.notes ? '<span>'+p.notes+'</span>' : "")
+            + (p.source_doc ? '<span>מקור: '+p.source_doc+'</span>' : "")
+            + '</div></div>';
+        }).join("")
+      + '</div></div>';
+  }).join("");
+}
+async function downloadAllPhotosOffline(){
+  const status = $("#gallery-dl-status");
+  if(!PHOTOS.length){ status.textContent="אין תמונות להורדה."; return; }
+  status.textContent = "מוריד 0/"+PHOTOS.length+"…";
+  let ok=0, fail=0;
+  for(const p of PHOTOS){
+    const src = PHOTOS_BASE_URL + encodeURIComponent(p.filename);
+    try{ const r = await fetch(src, {cache:"reload"}); if(r.ok) ok++; else fail++; }
+    catch(e){ fail++; }
+    status.textContent = "מוריד "+(ok+fail)+"/"+PHOTOS.length+"…";
+  }
+  status.innerHTML = fail
+    ? '<span style="color:var(--warn)">הורדו '+ok+' מתוך '+PHOTOS.length+' — '+fail+' נכשלו (בדוק חיבור רשת).</span>'
+    : '<span style="color:var(--ok)">כל '+ok+' התמונות נשמרו במכשיר לשימוש אופליין.</span>';
+}
+
 async function syncFromSheets(manual){
-  const configured = !!(SYNC_URLS.roles || SYNC_URLS.phonebook);
+  const configured = !!(SYNC_URLS.roles || SYNC_URLS.phonebook || SYNC_URLS.photos);
   if(!configured){
     $("#sync-body").innerHTML = '<div class="stat"><span>מקור נתונים</span><b>קבוע בקובץ (אין סנכרון מוגדר)</b></div>'
       +'<div class="stat"><span style="color:var(--muted);font-size:.78rem">כדי להפעיל סנכרון מ-Google Sheets, מלא את SYNC_URLS בקוד המקור.</span></div>';
@@ -948,8 +1059,12 @@ async function syncFromSheets(manual){
     try{ const t=await fetchCSV(SYNC_URLS.phonebook); localStorage.setItem(LS_SYNC_PHONES,t); if(applyPhonebookCSV(t)) okAny=true; }
     catch(e){ errs.push("טלפונים: "+e.message); const cached=localStorage.getItem(LS_SYNC_PHONES); if(cached) applyPhonebookCSV(cached); }
   }
+  if(SYNC_URLS.photos){
+    try{ const t=await fetchCSV(SYNC_URLS.photos); localStorage.setItem(LS_SYNC_PHOTOS,t); if(applyPhotosCSV(t)) okAny=true; }
+    catch(e){ errs.push("תמונות: "+e.message); const cached=localStorage.getItem(LS_SYNC_PHOTOS); if(cached) applyPhotosCSV(cached); }
+  }
   if(okAny){ localStorage.setItem(LS_SYNC_TS, new Date().toISOString()); }
-  renderRoles(); renderPhones($("#ph-search")?$("#ph-search").value:"");
+  renderRoles(); renderPhones($("#ph-search")?$("#ph-search").value:""); renderGallery();
   const ts = localStorage.getItem(LS_SYNC_TS);
   const tsStr = ts ? new Date(ts).toLocaleString("he-IL") : "— (עדיין לא הצליח להתחבר)";
   $("#sync-body").innerHTML =
@@ -961,6 +1076,7 @@ async function syncFromSheets(manual){
 function loadSyncCacheOffline(){
   const r=localStorage.getItem(LS_SYNC_ROLES); if(r) applyRolesCSV(r);
   const p=localStorage.getItem(LS_SYNC_PHONES); if(p) applyPhonebookCSV(p);
+  const ph=localStorage.getItem(LS_SYNC_PHOTOS); if(ph) applyPhotosCSV(ph);
 }
 
 /* ================= SETTINGS (basic gate, NOT real security) =================
@@ -1044,6 +1160,80 @@ const LS_GH_PAT="ems_gh_pat_v1";
 function b64EncodeUtf8(str){
   return btoa(unescape(encodeURIComponent(str)));
 }
+async function b64EncodeBinary(file){
+  const buf = await file.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  const chunk = 0x8000;
+  for(let i=0;i<bytes.length;i+=chunk){
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i+chunk));
+  }
+  return btoa(binary);
+}
+function slugifyFilename(title, ext){
+  const base = (title||"photo").trim()
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60) || "photo";
+  return base + "-" + Date.now() + "." + ext;
+}
+async function ghGet(path, pat){
+  const headers = { "Authorization": "Bearer "+pat, "Accept": "application/vnd.github+json" };
+  const res = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${path}?ref=${GH_BRANCH}`, {headers});
+  if(res.status===404) return null;
+  if(!res.ok) throw new Error("שליפת "+path+" נכשלה (HTTP "+res.status+")");
+  return await res.json();
+}
+async function ghPut(path, pat, base64Content, sha, message){
+  const headers = { "Authorization": "Bearer "+pat, "Accept": "application/vnd.github+json", "Content-Type":"application/json" };
+  const body = { message, content: base64Content, branch: GH_BRANCH };
+  if(sha) body.sha = sha;
+  const res = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${path}`, {method:"PUT", headers, body: JSON.stringify(body)});
+  if(!res.ok){ const err = await res.json().catch(()=>({})); throw new Error(err.message || ("HTTP "+res.status)); }
+}
+function csvEscape(v){
+  v = String(v==null?"":v);
+  return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v;
+}
+async function uploadPhotoToGitHub(){
+  const status = $("#photo-upload-status");
+  const patInput = $("#set-pat").value.trim();
+  const pat = patInput || localStorage.getItem(LS_GH_PAT) || "";
+  const fileInput = $("#photo-file");
+  if(!pat){ status.innerHTML='<span style="color:var(--danger)">חסר Personal Access Token (למעלה).</span>'; return; }
+  if(!fileInput.files.length){ status.innerHTML='<span style="color:var(--danger)">לא נבחרה תמונה.</span>'; return; }
+  if(patInput) localStorage.setItem(LS_GH_PAT, patInput);
+
+  const file = fileInput.files[0];
+  const title = $("#photo-title").value.trim() || file.name;
+  const category = $("#photo-category").value;
+  const location = $("#photo-location").value.trim();
+  const floor = $("#photo-floor").value.trim();
+  const notes = $("#photo-notes").value.trim();
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g,"") || "jpg";
+  const filename = slugifyFilename(title, ext);
+
+  try{
+    status.textContent = "קורא תמונה…";
+    const b64img = await b64EncodeBinary(file);
+
+    status.textContent = "מעלה תמונה…";
+    await ghPut("data/photos/"+filename, pat, b64img, null, "העלאת תמונה: "+title);
+
+    status.textContent = "מעדכן אינדקס…";
+    const cur = await ghGet("data/photos.csv", pat);
+    const curText = cur ? decodeURIComponent(escape(atob(cur.content.replace(/\n/g,"")))) : "id,title,category,location,floor,filename,source_doc,notes\n";
+    const id = "p"+Date.now();
+    const row = [id,title,category,location,floor,filename,"הועלה דרך מסך הגדרות",notes].map(csvEscape).join(",");
+    const newText = curText.replace(/\n?$/, "\n") + row + "\n";
+    await ghPut("data/photos.csv", pat, b64EncodeUtf8(newText), cur?cur.sha:null, "הוספת תמונה לאינדקס: "+title);
+
+    status.innerHTML = '<span style="color:var(--ok)">הועלה בהצלחה! האתר יתעדכן בתוך דקה-שתיים. מומלץ ללחוץ "סנכרן עכשיו".</span>';
+    $("#photo-title").value=""; $("#photo-location").value=""; $("#photo-floor").value=""; $("#photo-notes").value=""; fileInput.value="";
+  } catch(e){
+    status.innerHTML = '<span style="color:var(--danger)">כשל: '+e.message+'</span>';
+  }
+}
 
 async function uploadCSVToGitHub(){
   const status = $("#set-upload-status");
@@ -1126,7 +1316,7 @@ document.querySelectorAll(".tab-btn").forEach(b=>{
 loadSyncCacheOffline();
 renderHeader(); renderLevelStrip(); renderDeadlines(); renderRoles(); renderFloors(); renderOrder();
 renderSubtabs(); renderChecklist(); renderPhones("");
-renderUnified(); renderEquipment(); renderScenarios();
+renderUnified(); renderEquipment(); renderScenarios(); renderGallery();
 syncFromSheets(false);
 pollOref(); setInterval(pollOref, 15000);
 tick(); setInterval(tick,1000);
