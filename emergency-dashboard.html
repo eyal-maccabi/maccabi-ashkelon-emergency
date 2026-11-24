@@ -131,6 +131,10 @@ tr.miss td{color:var(--danger)}
 /* ===== Footer ===== */
 footer{max-width:1200px; margin:14px auto 0; padding:0 4px; display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; color:var(--muted); font-size:.78rem}
 .btn-print{border:1px solid var(--line); background:#fff; border-radius:6px; padding:6px 14px; font-size:.82rem}
+/* ===== Login gate ===== */
+#login-gate{position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; padding:20px; z-index:999}
+#login-gate.hidden{display:none}
+.login-box{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:28px 24px; max-width:360px; width:100%; box-shadow:0 4px 24px rgba(0,0,0,.08)}
 @media print{
   body{background:#fff}
   .tabs,.level-strip,.btn-reset,.btn-print,.lv-subtabs,.search-box{display:none !important}
@@ -146,6 +150,28 @@ footer{max-width:1200px; margin:14px auto 0; padding:0 4px; display:flex; justif
 </style>
 </head>
 <body>
+
+<!-- ============ LOGIN GATE (page-wide, before any content) ============
+     הגנה בסיסית - לא הגנה אמיתית. הקוד, ה-CSV וה-hash גלויים לכל מי שיש
+     לו גישת-קריאה לקוד המקור (כמו כל שאר האתר). זה שער UI מהיר, לא כספת.
+     מנוהל דרך data/access.csv בריפו — עדכון דרך מסך ⚙ הגדרות (לאחר כניסה). -->
+<div id="login-gate">
+  <div class="login-box">
+    <div class="brand-wrap" style="justify-content:center;margin-bottom:18px">
+      <svg class="maccabi-logo" style="color:var(--blue);height:40px" aria-label="מכבי שירותי בריאות" width="110px" height="42px" viewBox="0 0 110 42" xmlns="http://www.w3.org/2000/svg"><g fill="currentColor"><path d="M40.452545,3.55271368e-15 C75.7083577,3.55271368e-15 106.437398,11.847095 109.088211,26.4673481 C110.128145,32.2175732 106.682088,37.5395901 99.9531011,41.8828452 C102.318442,39.3951592 103.521503,36.5404375 103.337985,33.3594619 C102.583523,19.5752344 79.0728512,5.62787988 43.878211,1.52931518 C37.9852499,0.836025634 32.3369791,0.530162597 27.0149623,0.591335205 C31.3174357,0.203908691 35.8034269,3.55271368e-15 40.452545,3.55271368e-15 Z"/></g></svg>
+    </div>
+    <h1 style="font-size:1.1rem;text-align:center;margin-bottom:4px">מסך בקרה — שעת חירום · הגבורה 3</h1>
+    <div style="text-align:center;color:var(--muted);font-size:.82rem;margin-bottom:20px">הזן שם משתמש וסיסמה להמשך</div>
+    <label style="display:block;margin-bottom:4px">שם משתמש</label>
+    <input class="search-box" id="gate-user" style="margin-bottom:12px" autocomplete="username">
+    <label style="display:block;margin-bottom:4px">סיסמה</label>
+    <input class="search-box" id="gate-pass" type="password" style="margin-bottom:16px" autocomplete="current-password">
+    <button class="mini-btn" style="width:100%;padding:10px" onclick="tryGateLogin()">כניסה</button>
+    <div id="gate-err" style="color:var(--danger);font-size:.85rem;margin-top:10px;text-align:center"></div>
+  </div>
+</div>
+
+<div id="app-shell" hidden>
 
 <header class="topbar">
   <div class="brand-wrap">
@@ -383,6 +409,7 @@ footer{max-width:1200px; margin:14px auto 0; padding:0 4px; display:flex; justif
           <select class="search-box" id="set-target" style="margin-bottom:10px">
             <option value="data/phones.csv">ספר טלפונים (phones.csv)</option>
             <option value="data/roles.csv">תפקידים (roles.csv)</option>
+            <option value="data/access.csv">סיסמת כניסה לעמוד (access.csv)</option>
           </select>
           <input type="file" id="set-file" accept=".csv,text/csv" style="margin-bottom:10px;display:block">
           <button class="mini-btn" onclick="uploadCSVToGitHub()">העלה ועדכן באתר</button>
@@ -431,8 +458,110 @@ footer{max-width:1200px; margin:14px auto 0; padding:0 4px; display:flex; justif
   <button class="btn-print" onclick="print()">הדפסה (תיק קשיח)</button>
 </footer>
 
+</div><!-- /#app-shell -->
+
 <script>
 "use strict";
+
+/* ================= LOGIN GATE (page-wide) =================
+ * הגנה בסיסית מול "רק מישהו שלחצו עליו קישור" — לא הגנה אמיתית.
+ * סיסמה נשמרת כ-SHA-256 hash ב-data/access.csv (ציבורי בריפו, כמו כל
+ * קובץ אחר). פתוח כברירת מחדל: אשקלון / 1234 (לעדכון: מסך ⚙ הגדרות,
+ * רשימה "איזה קובץ מעלים" → access.csv, אחרי כניסה).
+ * sha256() כאן הוא מימוש JS טהור (לא תלוי ב-window.crypto.subtle) —
+ * עובד גם בפתיחת הקובץ מקומית (file://) בלי HTTPS.
+ */
+function sha256(message) {
+  function rotr(x, n) { return (x >>> n) | (x << (32 - n)); }
+  const K = [
+    0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2,
+  ];
+  let H = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  const bytes = new TextEncoder().encode(message);
+  const l = bytes.length;
+  const withOne = new Uint8Array(((l + 9 + 63) >> 6) << 6);
+  withOne.set(bytes);
+  withOne[l] = 0x80;
+  const bitLenHi = Math.floor((l * 8) / 0x100000000);
+  const bitLenLo = (l * 8) >>> 0;
+  const dv = new DataView(withOne.buffer);
+  dv.setUint32(withOne.length - 8, bitLenHi);
+  dv.setUint32(withOne.length - 4, bitLenLo);
+  for (let chunkStart = 0; chunkStart < withOne.length; chunkStart += 64) {
+    const w = new Uint32Array(64);
+    for (let i = 0; i < 16; i++) w[i] = dv.getUint32(chunkStart + i * 4);
+    for (let i = 16; i < 64; i++) {
+      const s0 = rotr(w[i-15], 7) ^ rotr(w[i-15], 18) ^ (w[i-15] >>> 3);
+      const s1 = rotr(w[i-2], 17) ^ rotr(w[i-2], 19) ^ (w[i-2] >>> 10);
+      w[i] = (w[i-16] + s0 + w[i-7] + s1) >>> 0;
+    }
+    let [a,b,c,d,e,f,g,h] = H;
+    for (let i = 0; i < 64; i++) {
+      const S1 = rotr(e,6) ^ rotr(e,11) ^ rotr(e,25);
+      const ch = (e & f) ^ (~e & g);
+      const temp1 = (h + S1 + ch + K[i] + w[i]) >>> 0;
+      const S0 = rotr(a,2) ^ rotr(a,13) ^ rotr(a,22);
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const temp2 = (S0 + maj) >>> 0;
+      h=g; g=f; f=e; e=(d+temp1)>>>0; d=c; c=b; b=a; a=(temp1+temp2)>>>0;
+    }
+    H = [ (H[0]+a)>>>0,(H[1]+b)>>>0,(H[2]+c)>>>0,(H[3]+d)>>>0,(H[4]+e)>>>0,(H[5]+f)>>>0,(H[6]+g)>>>0,(H[7]+h)>>>0 ];
+  }
+  return H.map(x => x.toString(16).padStart(8,"0")).join("");
+}
+
+const GATE_URL = "https://raw.githubusercontent.com/eyal-maccabi/maccabi-ashkelon-emergency/main/data/access.csv";
+const LS_GATE_UNLOCKED = "ems_gate_unlocked_v1";
+const LS_GATE_CACHE = "ems_gate_cache_v1";
+// ברירת מחדל אופליין (נדרס ע"י סנכרון חי מ-access.csv כשיש רשת):
+let ACCESS_LIST = [["אשקלון","03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4"]];
+
+function gateParseCSV(text){
+  // פרסר CSV מקומי מינימלי (אין תלות בפונקציות שמוגדרות מאוחר יותר בקובץ)
+  return text.split(/\r?\n/).map(l=>l.split(",")).filter(r=>r.length>=2 && r[0].trim());
+}
+function applyAccessCSV(text){
+  const rows = gateParseCSV(text).filter(r=>!/^username$|שם משתמש/i.test(r[0]));
+  if(rows.length){ ACCESS_LIST = rows.map(r=>[r[0].trim(), r[1].trim()]); }
+  return rows.length;
+}
+(function initGate(){
+  const cached = localStorage.getItem(LS_GATE_CACHE);
+  if(cached) applyAccessCSV(cached);
+  // סנכרון רקע - לא חוסם את מסך הכניסה, רק מעדכן למקרה שהסיסמה שונתה
+  fetch(GATE_URL, {cache:"no-store"}).then(r=>r.ok?r.text():null).then(t=>{
+    if(t){ applyAccessCSV(t); localStorage.setItem(LS_GATE_CACHE, t); }
+  }).catch(()=>{});
+  if(localStorage.getItem(LS_GATE_UNLOCKED)==="1"){
+    document.getElementById("login-gate").classList.add("hidden");
+    document.getElementById("app-shell").hidden = false;
+  }
+})();
+function tryGateLogin(){
+  const u = document.getElementById("gate-user").value.trim();
+  const p = document.getElementById("gate-pass").value;
+  const err = document.getElementById("gate-err");
+  const hash = sha256(p);
+  const ok = ACCESS_LIST.some(r => r[0]===u && r[1]===hash);
+  if(ok){
+    localStorage.setItem(LS_GATE_UNLOCKED, "1");
+    document.getElementById("login-gate").classList.add("hidden");
+    document.getElementById("app-shell").hidden = false;
+    err.textContent = "";
+  } else {
+    err.textContent = "שם משתמש או סיסמה שגויים.";
+  }
+}
+document.getElementById("gate-pass").addEventListener("keydown", e=>{ if(e.key==="Enter") tryGateLogin(); });
+document.getElementById("gate-user").addEventListener("keydown", e=>{ if(e.key==="Enter") tryGateLogin(); });
+
 /* ================= DATA ================= */
 const LEVELS = [
   {id:"A",  name:"כוננות א׳ — שגרה",            short:"א׳",  color:"#2e9e5b", desc:"כוננות רגילה בזמן רגיעה", active:false},
