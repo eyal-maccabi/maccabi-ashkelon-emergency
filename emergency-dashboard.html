@@ -537,10 +537,10 @@ let ROLES = [
 ];
 
 const FLOORS = [
-  ["קומה 0 — בריאות האישה","הכי מוגן שיש + חדר רופא נשים פנימי + מדרגות פנימיות","ג׳ני · אילנה"],
-  ["קומה 1 — מעבדה, פיזיו, משרדים","ממ״ק (15 מ״ר) + מדרגות פנימיות","מירב אלזם · שלומית דויט · קראל לוי (פיזיו) · סיגלית זגורי (משרד) · ענבל וייס (מעבדה ועו״ס) · כוכב סבידה (קלינאיות)"],
-  ["קומה 2 — אחיות, רופאים, דימות, טיפולים","ממ״ק (15 מ״ר) + מדרגות פנימיות","אחמש (אחיות) · רונה חכם גבע (סיעוד וחדרי רופאים) · ליז מלכה (מתחם הרפואה) · אירן אביחסרה (דימות, משוב ומומחים)"],
-  ["קומה 3 — מכונים, מכבי טבעי, מכבי דנט","ממ״ק (15 מ״ר) + מדרגות פנימיות","אתי קקון (לב וסוכרת) · פנינה שטרית (התפתחות הילד) · רות אופיר / חגית מעוז (דנט) · גלית פנקר / מזכירות (טבעי) · אסתר דרנקובסקי וקס / גלינה גרבר (פארם)"],
+  ["קומה 0 — בריאות האישה","הכי מוגן שיש + חדר רופא נשים פנימי + מדרגות פנימיות",["ג׳ני","אילנה"]],
+  ["קומה 1 — מעבדה, פיזיו, משרדים","ממ״ק (15 מ״ר) + מדרגות פנימיות",["מירב אלזם","שלומית דויט","קראל לוי (פיזיו)","סיגלית זגורי (משרד)","ענבל וייס (מעבדה ועו״ס)","כוכב סבידה (קלינאיות)"]],
+  ["קומה 2 — אחיות, רופאים, דימות, טיפולים","ממ״ק (15 מ״ר) + מדרגות פנימיות",["אחמש (אחיות)","רונה חכם גבע (סיעוד וחדרי רופאים)","ליז מלכה (מתחם הרפואה)","אירן אביחסרה (דימות, משוב ומומחים)"]],
+  ["קומה 3 — מכונים, מכבי טבעי, מכבי דנט","ממ״ק (15 מ״ר) + מדרגות פנימיות",["אתי קקון (לב וסוכרת)","פנינה שטרית (התפתחות הילד)","רות אופיר / חגית מעוז (דנט)","גלית פנקר / מזכירות (טבעי)","אסתר דרנקובסקי וקס / גלינה גרבר (פארם)"]],
 ];
 
 const UNIFIED_KEY = [
@@ -818,7 +818,9 @@ function renderRoles(){
 }
 function renderFloors(){
   $("#floors-body").innerHTML =
-    FLOORS.map(f=>'<div class="stat"><span><b>'+f[0]+'</b><br><small>'+f[1]+'</small><br><small class="who" style="color:var(--muted)">אחראים: '+f[2]+'</small></span></div>').join("")
+    FLOORS.map(f=>'<div class="stat"><span><b>'+f[0]+'</b><br><small>'+f[1]+'</small><br><small class="who" style="color:var(--muted)">אחראים: '
+      +f[2].map(n=>'<a href="javascript:void(0)" onclick="jumpToContact('+JSON.stringify(n)+')" style="color:var(--blue);text-decoration:underline;cursor:pointer">'+n+'</a>').join(' · ')
+      +'</small></span></div>').join("")
     +'<div class="stat"><span><b>תפקיד אחראי קומה בפינוי</b></span><b>כיוון הצוותים · וידוא שהקומה התרוקנה · דלתות סגורות ולא נעולות (לפי נוהל המילוט — שקופית 9 מנוסחת ״נעילה״, להכרעה) · כריזה חוזרת במגפון</b></div>'
     +'<div class="stat"><span><b>נקודת כינוס בשריפה / רעידת אדמה</b><br><small style="color:var(--warn)">לבדיקה: בשקופית 7 מופיעה גם הנחיה להתפנות לקדמת המבנה — מחייב הכרעה מנהלית</small></span><b class="good">חניון עליון · יציאה אחורית</b></div>'
     +'<div class="stat"><span><b>כריזה ראשית</b></span><b>קומת הכניסה, ליד שעון הנוכחות (שקופית 33 ממקמת בקומה 1 — לאימות בשטח) · עמדות נוספות: משרד קומה 1, מזכירות קומה 2</b></div>'
@@ -1303,13 +1305,47 @@ function renderPhones(q){
 }
 $("#ph-search").addEventListener("input",e=>renderPhones(e.target.value));
 
+/* ================= JUMP TO CONTACT (floor manager click) ================= */
+function switchTab(tabId){
+  document.querySelectorAll(".tab-btn").forEach(x=>x.classList.remove("active"));
+  const btn = document.querySelector('.tab-btn[data-tab="'+tabId+'"]');
+  if(btn) btn.classList.add("active");
+  document.querySelectorAll("main .panel").forEach(p=>p.hidden = p.id!=="tab-"+tabId);
+}
+function findContactPhone(rawName){
+  // מסיר "(הקשר)" בסוגריים, ומפצל "/" (כמה אנשים חלופיים) לנסות כל שם בנפרד
+  const base = rawName.replace(/\([^)]*\)\s*$/, "").trim();
+  const candidates = base.split("/").map(s=>s.trim()).filter(Boolean);
+  const groups = PHONE_GROUPS.map(g => g.dynamic==="roles"
+    ? {name:g.name, rows: ROLES.map(r=>[r[0]+" — "+r[1], r[2], ""])}
+    : g);
+  for(const cand of candidates){
+    for(const g of groups){
+      for(const r of g.rows){
+        if(r[0].includes(cand)) return {label:r[0], phone:r[1], group:g.name, query:cand};
+      }
+    }
+  }
+  return null;
+}
+function jumpToContact(rawName){
+  const found = findContactPhone(rawName);
+  if(!found){
+    alert('לא נמצא איש קשר תואם ל"'+rawName+'" בספר הטלפונים. אפשר לחפש ידנית בלשונית "טלפונים חיוניים".');
+    switchTab("phones");
+    return;
+  }
+  switchTab("phones");
+  $("#ph-search").value = found.query;
+  renderPhones(found.query);
+  setTimeout(()=>{
+    $("#phones-wrap").scrollIntoView({behavior:"smooth", block:"start"});
+  }, 50);
+}
+
 /* ================= TABS ================= */
 document.querySelectorAll(".tab-btn").forEach(b=>{
-  b.addEventListener("click",()=>{
-    document.querySelectorAll(".tab-btn").forEach(x=>x.classList.remove("active"));
-    b.classList.add("active");
-    document.querySelectorAll(".panel").forEach(p=>p.hidden = p.id!=="tab-"+b.dataset.tab);
-  });
+  b.addEventListener("click",()=>{ switchTab(b.dataset.tab); });
 });
 
 /* ================= INIT ================= */
