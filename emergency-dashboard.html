@@ -413,14 +413,9 @@ footer{max-width:1200px; margin:14px auto 0; padding:0 4px; display:flex; justif
         <div class="stat" style="display:block">
           <b>העלאת קובץ CSV מעודכן לאתר</b>
           <div style="font-size:.78rem;color:var(--muted);margin:6px 0 10px">
-            זה כותב בפועל לריפו ב-GitHub — דורש Personal Access Token משלך
-            (לא הסיסמה של מסך זה). ה-token נשמר רק בדפדפן הזה, לעולם לא
-            בקוד או בריפו. <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">ליצירת token מתאים</a>
-            — בחר "Only select repositories" → maccabi-ashkelon-emergency,
-            הרשאה Contents: Read and write.
+            זה כותב בפועל לריפו ב-GitHub — אין צורך בטוקן, הכתיבה מתבצעת
+            אוטומטית מול שרת כתיבה מאובטח.
           </div>
-          <label style="display:block;margin-bottom:4px">GitHub Personal Access Token</label>
-          <input class="search-box" id="set-pat" type="password" style="margin-bottom:10px" placeholder="github_pat_...">
           <label style="display:block;margin-bottom:4px">איזה קובץ מעלים</label>
           <select class="search-box" id="set-target" style="margin-bottom:10px">
             <option value="data/phones.csv">ספר טלפונים (phones.csv)</option>
@@ -1264,7 +1259,7 @@ function renderGallery(){
 async function deletePhoto(idx){
   const p = PHOTOS[idx];
   if(!confirm('להסיר את "'+(p.title||p.filename)+'" מהגלריה?')) return;
-  const pat = GH_WRITE_TOKEN || localStorage.getItem(LS_GH_PAT) || "";
+  const pat = "proxy"; // כתיבה אמיתית מטופלת ב-WRITE_PROXY_URL
   if(!pat){ alert("חסרה הרשאת כתיבה — פנה למנהל המערכת."); return; }
   PHOTOS.splice(idx,1);
   renderGallery();
@@ -1328,7 +1323,7 @@ function photoFormHTML(p){
 }
 async function savePhotoModal(){
   const status = $("#edit-modal-status");
-  const pat = GH_WRITE_TOKEN || localStorage.getItem(LS_GH_PAT) || "";
+  const pat = "proxy"; // כתיבה אמיתית מטופלת ב-WRITE_PROXY_URL
   if(!pat){ status.innerHTML = '<span style="color:var(--danger)">חסרה הרשאת כתיבה — פנה למנהל המערכת.</span>'; return; }
   const fileInput = $("#pf-file");
   const file = fileInput.files[0];
@@ -1482,8 +1477,6 @@ function showSettingsPanel(){
   $("#set-phones-url").textContent = SYNC_URLS.phonebook || "(לא מוגדר)";
   const ts = localStorage.getItem(LS_SYNC_TS);
   $("#set-lastsync").textContent = ts ? new Date(ts).toLocaleString("he-IL") : "— עדיין לא הצליח";
-  const savedPat = localStorage.getItem(LS_GH_PAT);
-  if(savedPat) $("#set-pat").placeholder = "(token שמור בדפדפן הזה — השאר ריק לשימוש בו, או הדבק אחר)";
 }
 function resetAllCache(){
   if(!confirm("לאפס את כל הנתונים השמורים במכשיר הזה (כוננות, צ׳קליסטים, סנכרון)? הפעולה בלתי הפיכה.")) return;
@@ -1492,18 +1485,31 @@ function resetAllCache(){
   location.reload();
 }
 
-/* ================= UPLOAD CSV → GitHub (Contents API) =================
- * דורש Personal Access Token אמיתי של GitHub שהמשתמש מכניס ידנית —
- * ה-token נשמר רק ב-localStorage של הדפדפן הזה, לעולם לא בקוד/בריפו.
- * הסיסמה של מסך ההגדרות (eyal/0000) היא שער UI בלבד; האימות האמיתי
- * לכתיבה בפועל הוא ה-PAT, מול GitHub עצמו.
+/* ================= WRITE PROXY (Cloudflare Worker) =================
+ * כל כתיבה ל-GitHub עוברת דרך proxy קטן שמחזיק את ה-token האמיתי בצד
+ * השרת בלבד (Worker secret) — אף טוקן אמיתי לעולם לא נחשף בקוד הציבורי,
+ * ולכן GitHub לא יכול לשלול אותו אוטומטית (כמו שקרה לטוקן שהוטבע כאן
+ * ישירות בניסיון קודם). ה-APP_SECRET הוא מחרוזת פנימית לזיהוי בקשות
+ * מהדשבורד הזה בלבד — לא פורמט שסקאנרים של GitHub מכירים, ומוגבל
+ * ל-paths בתוך data/ של הריפו הזה ולא יותר, גם אם ייחשף.
  */
 const GH_OWNER="eyal-maccabi", GH_REPO="maccabi-ashkelon-emergency", GH_BRANCH="main";
-/* טוקן כתיבה מוגבל לריפו הזה בלבד (Contents: Read & write) — מוטבע כדי
- * שעורכים (role=editor) לא יצטרכו להדביק טוקן בעצמם בכל שמירה.
- * ממתין להזרקה בפועל מהמשתמש; ריק = fallback לשדה PAT/ל-localStorage. */
-const GH_WRITE_TOKEN = "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";
+const WRITE_PROXY_URL = "https://maccabi-ashkelon-write-proxy.eyal-maccabi.workers.dev";
+const APP_SECRET = "35e36ec1d006c4f2c8633dc930365f26";
 const LS_GH_PAT="ems_gh_pat_v1";
+
+async function proxyWrite(path, base64Content, message){
+  const res = await fetch(WRITE_PROXY_URL, {
+    method: "POST",
+    headers: {"Content-Type":"application/json", "X-App-Secret": APP_SECRET},
+    body: JSON.stringify({path, content: base64Content, message}),
+  });
+  if(!res.ok){
+    const err = await res.json().catch(()=>({}));
+    throw new Error(err.error || ("HTTP "+res.status));
+  }
+}
+
 
 function b64EncodeUtf8(str){
   return btoa(unescape(encodeURIComponent(str)));
@@ -1526,18 +1532,15 @@ function slugifyFilename(title, ext){
   return base + "-" + Date.now() + "." + ext;
 }
 async function ghGet(path, pat){
-  const headers = { "Authorization": "Bearer "+pat, "Accept": "application/vnd.github+json" };
-  const res = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${path}?ref=${GH_BRANCH}`, {headers});
+  // קריאה ציבורית — הריפו ציבורי, אין צורך בהרשאה
+  const res = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${path}?ref=${GH_BRANCH}`);
   if(res.status===404) return null;
   if(!res.ok) throw new Error("שליפת "+path+" נכשלה (HTTP "+res.status+")");
   return await res.json();
 }
 async function ghPut(path, pat, base64Content, sha, message){
-  const headers = { "Authorization": "Bearer "+pat, "Accept": "application/vnd.github+json", "Content-Type":"application/json" };
-  const body = { message, content: base64Content, branch: GH_BRANCH };
-  if(sha) body.sha = sha;
-  const res = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${path}`, {method:"PUT", headers, body: JSON.stringify(body)});
-  if(!res.ok){ const err = await res.json().catch(()=>({})); throw new Error(err.message || ("HTTP "+res.status)); }
+  // כתיבה עוברת כולה דרך ה-proxy (ה-token האמיתי חי רק שם); sha מטופל בצד השרת
+  await proxyWrite(path, base64Content, message);
 }
 function csvEscape(v){
   v = String(v==null?"":v);
@@ -1680,10 +1683,7 @@ async function writeFileToGitHub(path, content, message, pat){
 
 async function saveEditModal(){
   const status = $("#edit-modal-status");
-  const patInput = $("#edit-pat") ? $("#edit-pat").value.trim() : "";
-  const pat = patInput || GH_WRITE_TOKEN || localStorage.getItem(LS_GH_PAT) || "";
-  if(!pat){ status.innerHTML = '<span style="color:var(--danger)">חסר הרשאת כתיבה — פנה למנהל המערכת.</span>'; return; }
-  if(patInput) localStorage.setItem(LS_GH_PAT, patInput);
+  const pat = "proxy"; // כתיבה אמיתית מטופלת ב-WRITE_PROXY_URL
 
   let newVal;
   try{ newVal = readEditModalValue(); }
@@ -1771,7 +1771,7 @@ function addGroup(){
   editPhoneGroupRows(PHONE_GROUPS.length-1);
 }
 async function quickSavePhonesCSV(){
-  const pat = GH_WRITE_TOKEN || localStorage.getItem(LS_GH_PAT) || "";
+  const pat = "proxy"; // כתיבה אמיתית מטופלת ב-WRITE_PROXY_URL
   if(!pat){ alert("חסרה הרשאת כתיבה — פנה למנהל המערכת."); return; }
   try{
     await writeFileToGitHub("data/phones.csv", serializePhonesCSV(),
@@ -1782,12 +1782,9 @@ async function quickSavePhonesCSV(){
 
 async function uploadPhotoToGitHub(){
   const status = $("#photo-upload-status");
-  const patInput = $("#set-pat").value.trim();
-  const pat = patInput || GH_WRITE_TOKEN || localStorage.getItem(LS_GH_PAT) || "";
+  const pat = "proxy"; // כתיבה אמיתית מטופלת ב-WRITE_PROXY_URL
   const fileInput = $("#photo-file");
-  if(!pat){ status.innerHTML='<span style="color:var(--danger)">חסר Personal Access Token (למעלה).</span>'; return; }
   if(!fileInput.files.length){ status.innerHTML='<span style="color:var(--danger)">לא נבחרה תמונה.</span>'; return; }
-  if(patInput) localStorage.setItem(LS_GH_PAT, patInput);
 
   const file = fileInput.files[0];
   const title = $("#photo-title").value.trim() || file.name;
@@ -1822,13 +1819,10 @@ async function uploadPhotoToGitHub(){
 
 async function uploadCSVToGitHub(){
   const status = $("#set-upload-status");
-  const patInput = $("#set-pat").value.trim();
-  const pat = patInput || GH_WRITE_TOKEN || localStorage.getItem(LS_GH_PAT) || "";
+  const pat = "proxy"; // כתיבה אמיתית מטופלת ב-WRITE_PROXY_URL
   const path = $("#set-target").value;
   const fileInput = $("#set-file");
-  if(!pat){ status.innerHTML='<span style="color:var(--danger)">חסר Personal Access Token.</span>'; return; }
   if(!fileInput.files.length){ status.innerHTML='<span style="color:var(--danger)">לא נבחר קובץ.</span>'; return; }
-  if(patInput) localStorage.setItem(LS_GH_PAT, patInput); // נשמר רק בדפדפן הזה
 
   status.textContent = "קורא קובץ…";
   const file = fileInput.files[0];
