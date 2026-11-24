@@ -320,6 +320,27 @@ footer{max-width:1200px; margin:14px auto 0; padding:0 4px; display:flex; justif
         <div class="stat">
           <button class="btn-reset" onclick="resetAllCache()">איפוס מלא (מחיקת כל המטמון המקומי)</button>
         </div>
+        <hr style="border:none;border-top:1px solid var(--line);margin:14px 0">
+        <div class="stat" style="display:block">
+          <b>העלאת קובץ CSV מעודכן לאתר</b>
+          <div style="font-size:.78rem;color:var(--muted);margin:6px 0 10px">
+            זה כותב בפועל לריפו ב-GitHub — דורש Personal Access Token משלך
+            (לא הסיסמה של מסך זה). ה-token נשמר רק בדפדפן הזה, לעולם לא
+            בקוד או בריפו. <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">ליצירת token מתאים</a>
+            — בחר "Only select repositories" → maccabi-ashkelon-emergency,
+            הרשאה Contents: Read and write.
+          </div>
+          <label style="display:block;margin-bottom:4px">GitHub Personal Access Token</label>
+          <input class="search-box" id="set-pat" type="password" style="margin-bottom:10px" placeholder="github_pat_...">
+          <label style="display:block;margin-bottom:4px">איזה קובץ מעלים</label>
+          <select class="search-box" id="set-target" style="margin-bottom:10px">
+            <option value="data/phones.csv">ספר טלפונים (phones.csv)</option>
+            <option value="data/roles.csv">תפקידים (roles.csv)</option>
+          </select>
+          <input type="file" id="set-file" accept=".csv,text/csv" style="margin-bottom:10px;display:block">
+          <button class="mini-btn" onclick="uploadCSVToGitHub()">העלה ועדכן באתר</button>
+          <div id="set-upload-status" style="font-size:.82rem;margin-top:8px"></div>
+        </div>
         <div class="stat"><button class="mini-btn" onclick="closeSettings()">חזרה למסך הבקרה</button></div>
       </div>
     </div>
@@ -977,12 +998,76 @@ function showSettingsPanel(){
   $("#set-phones-url").textContent = SYNC_URLS.phonebook || "(לא מוגדר)";
   const ts = localStorage.getItem(LS_SYNC_TS);
   $("#set-lastsync").textContent = ts ? new Date(ts).toLocaleString("he-IL") : "— עדיין לא הצליח";
+  const savedPat = localStorage.getItem(LS_GH_PAT);
+  if(savedPat) $("#set-pat").placeholder = "(token שמור בדפדפן הזה — השאר ריק לשימוש בו, או הדבק אחר)";
 }
 function resetAllCache(){
   if(!confirm("לאפס את כל הנתונים השמורים במכשיר הזה (כוננות, צ׳קליסטים, סנכרון)? הפעולה בלתי הפיכה.")) return;
   Object.keys(localStorage).filter(k=>k.startsWith("ems_")).forEach(k=>localStorage.removeItem(k));
   sessionStorage.removeItem(LS_SETTINGS_UNLOCKED);
   location.reload();
+}
+
+/* ================= UPLOAD CSV → GitHub (Contents API) =================
+ * דורש Personal Access Token אמיתי של GitHub שהמשתמש מכניס ידנית —
+ * ה-token נשמר רק ב-localStorage של הדפדפן הזה, לעולם לא בקוד/בריפו.
+ * הסיסמה של מסך ההגדרות (eyal/0000) היא שער UI בלבד; האימות האמיתי
+ * לכתיבה בפועל הוא ה-PAT, מול GitHub עצמו.
+ */
+const GH_OWNER="eyal-maccabi", GH_REPO="maccabi-ashkelon-emergency", GH_BRANCH="main";
+const LS_GH_PAT="ems_gh_pat_v1";
+
+function b64EncodeUtf8(str){
+  return btoa(unescape(encodeURIComponent(str)));
+}
+
+async function uploadCSVToGitHub(){
+  const status = $("#set-upload-status");
+  const patInput = $("#set-pat").value.trim();
+  const pat = patInput || localStorage.getItem(LS_GH_PAT) || "";
+  const path = $("#set-target").value;
+  const fileInput = $("#set-file");
+  if(!pat){ status.innerHTML='<span style="color:var(--danger)">חסר Personal Access Token.</span>'; return; }
+  if(!fileInput.files.length){ status.innerHTML='<span style="color:var(--danger)">לא נבחר קובץ.</span>'; return; }
+  if(patInput) localStorage.setItem(LS_GH_PAT, patInput); // נשמר רק בדפדפן הזה
+
+  status.textContent = "קורא קובץ…";
+  const file = fileInput.files[0];
+  const text = await file.text();
+  // בדיקת תקינות CSV בסיסית לפני כתיבה
+  const rows = parseCSV(text);
+  if(rows.length < 2){
+    status.innerHTML = '<span style="color:var(--danger)">הקובץ נראה ריק/לא תקין — לא בוצעה העלאה.</span>';
+    return;
+  }
+
+  const api = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${path}`;
+  const headers = { "Authorization": "Bearer "+pat, "Accept": "application/vnd.github+json" };
+
+  try{
+    status.textContent = "שולף את גרסת הקובץ הנוכחית…";
+    const getRes = await fetch(api+"?ref="+GH_BRANCH, {headers});
+    if(!getRes.ok) throw new Error("לא הצליח לשלוף את הקובץ הקיים — בדוק הרשאות ה-token (HTTP "+getRes.status+")");
+    const cur = await getRes.json();
+
+    status.textContent = "מעלה…";
+    const putRes = await fetch(api, {
+      method:"PUT", headers:{...headers, "Content-Type":"application/json"},
+      body: JSON.stringify({
+        message: "עדכון "+path+" דרך מסך הגדרות ("+new Date().toLocaleString("he-IL")+")",
+        content: b64EncodeUtf8(text),
+        sha: cur.sha,
+        branch: GH_BRANCH,
+      }),
+    });
+    if(!putRes.ok){
+      const errBody = await putRes.json().catch(()=>({}));
+      throw new Error((errBody.message||("HTTP "+putRes.status)));
+    }
+    status.innerHTML = '<span style="color:var(--ok)">הועלה בהצלחה! האתר יתעדכן בתוך דקה-שתיים. מומלץ ללחוץ "סנכרן עכשיו" בעוד כמה שניות.</span>';
+  } catch(e){
+    status.innerHTML = '<span style="color:var(--danger)">כשל: '+e.message+'</span>';
+  }
 }
 
 /* ================= PHONES ================= */
