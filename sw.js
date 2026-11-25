@@ -3,7 +3,7 @@
 // נתוני הטלפונים/תפקידים נשלפים ע"י הדף עצמו מ-Google Sheets (fetch רגיל,
 // לא עובר כאן) ונשמרים ב-localStorage של הדף — כך שגם הם נשארים זמינים אופליין.
 
-const CACHE_NAME = "emergency-ashkelon-v11";
+const CACHE_NAME = "emergency-ashkelon-v12";
 const APP_SHELL = [
   "./emergency-dashboard.html",
   "./manifest.json",

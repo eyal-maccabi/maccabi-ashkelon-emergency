@@ -209,6 +209,7 @@ footer{max-width:1200px; margin:14px auto 0; padding:0 4px; display:flex; justif
   </div>
   <div class="spacer"></div>
   <div class="clock" id="clock">--:--:--</div>
+  <button class="level-pill" style="cursor:pointer; border:none" onclick="logoutGate()" title="התנתק וחזור למסך הכניסה">⏏ התנתק</button>
   <div class="level-pill"><span class="level-dot" id="lv-dot"></span><span id="lv-name">קבע מצב כוננות</span></div>
 </header>
 
@@ -608,6 +609,17 @@ function tryGateLogin(){
 }
 document.getElementById("gate-pass").addEventListener("keydown", e=>{ if(e.key==="Enter") tryGateLogin(); });
 document.getElementById("gate-user").addEventListener("keydown", e=>{ if(e.key==="Enter") tryGateLogin(); });
+function logoutGate(){
+  localStorage.removeItem(LS_GATE_UNLOCKED);
+  localStorage.removeItem(LS_GATE_ROLE);
+  localStorage.removeItem(LS_GATE_USER);
+  CURRENT_ROLE = "viewer";
+  CURRENT_USER = "";
+  document.getElementById("app-shell").hidden = true;
+  document.getElementById("login-gate").classList.remove("hidden");
+  const u = document.getElementById("gate-user"), p = document.getElementById("gate-pass"), e = document.getElementById("gate-err");
+  if(u) u.value = ""; if(p) p.value = ""; if(e) e.textContent = "";
+}
 
 /* ================= DATA ================= */
 const LEVELS = [
