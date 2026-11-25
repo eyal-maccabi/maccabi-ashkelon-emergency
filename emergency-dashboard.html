@@ -151,6 +151,11 @@ footer{max-width:1200px; margin:14px auto 0; padding:0 4px; display:flex; justif
 .edit-group-head{display:flex; gap:8px; margin-bottom:8px}
 .edit-add-btn{border:1px dashed var(--line); background:#fff; border-radius:6px; padding:6px 12px; font-size:.82rem; cursor:pointer; color:var(--blue); width:100%}
 .edit-pencil{border:none; background:none; cursor:pointer; font-size:.95rem; margin-right:6px; vertical-align:middle}
+.lightbox-overlay{position:fixed; inset:0; background:rgba(0,0,0,.9); display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:1100; padding:20px; cursor:zoom-out}
+.lightbox-overlay[hidden]{display:none}
+.lightbox-overlay img{max-width:95vw; max-height:85vh; object-fit:contain; cursor:default; border-radius:4px}
+.lightbox-close{position:absolute; top:16px; left:16px; background:rgba(255,255,255,.15); color:#fff; border:none; border-radius:50%; width:38px; height:38px; font-size:1.1rem; cursor:pointer}
+.lightbox-cap{color:#fff; margin-top:12px; font-size:.9rem; text-align:center}
 @media print{
   body{background:#fff}
   .tabs,.level-strip,.btn-reset,.btn-print,.lv-subtabs,.search-box{display:none !important}
@@ -472,6 +477,12 @@ footer{max-width:1200px; margin:14px auto 0; padding:0 4px; display:flex; justif
         <span id="edit-modal-status" style="font-size:.82rem"></span>
       </div>
     </div>
+  </div>
+
+  <div id="lightbox" class="lightbox-overlay" hidden onclick="closePhotoLightbox()">
+    <button class="lightbox-close" onclick="event.stopPropagation(); closePhotoLightbox()">✕</button>
+    <img id="lightbox-img" src="" alt="" onclick="event.stopPropagation()">
+    <div id="lightbox-cap" class="lightbox-cap"></div>
   </div>
 
 </main>
@@ -1253,7 +1264,7 @@ function renderGallery(){
           const idx = PHOTOS.indexOf(p);
           const src = PHOTOS_BASE_URL + encodeURIComponent(p.filename);
           return '<div class="photo-card">'
-            + '<img src="'+src+'" alt="'+(p.title||"")+'">'
+            + '<img src="'+src+'" alt="'+(p.title||"")+'" onclick="openPhotoLightbox('+idx+')" style="cursor:zoom-in">'
             + (isEditor() ? '<div class="photo-edit-bar">'
                 + '<button class="edit-pencil" title="ערוך פרטים" onclick="openPhotoEditModal('+idx+')">✏️</button>'
                 + '<button class="edit-pencil" title="הסר" onclick="deletePhoto('+idx+')">🗑️</button>'
@@ -1267,6 +1278,15 @@ function renderGallery(){
   }).join("")
   + (sources.length ? '<div class="stat" style="margin-top:14px"><span style="color:var(--muted);font-size:.78rem">מקורות: '+sources.join(" · ")+'</span></div>' : "");
 }
+function openPhotoLightbox(idx){
+  const p = PHOTOS[idx];
+  if(!p) return;
+  const src = PHOTOS_BASE_URL + encodeURIComponent(p.filename);
+  $("#lightbox-img").src = src;
+  $("#lightbox-cap").textContent = p.title || p.filename;
+  $("#lightbox").hidden = false;
+}
+function closePhotoLightbox(){ $("#lightbox").hidden = true; $("#lightbox-img").src = ""; }
 async function deletePhoto(idx){
   const p = PHOTOS[idx];
   if(!confirm('להסיר את "'+(p.title||p.filename)+'" מהגלריה?')) return;
